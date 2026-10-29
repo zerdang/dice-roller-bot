@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: dice-roller-tabletop
+    runtime: docker
+    region: virginia
+    plan: 0.5c-512mb
+    numInstances: 1
+    branch: main
+    autoDeployTrigger: "off"
+    healthCheckPath: /healthz
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: COMPANION_DB
+        value: /var/data/companion.db
+      - key: COMPANION_ASSETS
+        value: /var/data/companion-assets
+    disk:
+      name: tabletop-data
+      mountPath: /var/data
+      sizeGB: 1
