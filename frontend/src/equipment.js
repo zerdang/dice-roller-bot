@@ -1,0 +1,63 @@
+export const EQUIPMENT_CATALOG = [
+  { id: "sk-109-seeker", name: "SK 109 Seeker Smart Rifle", cost: 0, category: "weapon", damage: "1d10", description: "Smart rifle with spectroscope night/thermal vision, smart-link support, and armor-piercing rounds. Deals triple damage on a critical hit." },
+  { id: "f20-arbiter", name: "F20 Arbiter Pulse Rifle", cost: 0, category: "weapon", damage: "5d10", description: "Pulse rifle with a six-round pump-action grenade launcher, smart-link support, and phosphorous rounds that deal double damage on a critical hit." },
+  { id: "kano-x9", name: "KANO X9 Combat Shotgun", cost: 0, category: "weapon", damage: "2d10", description: "Combat shotgun with an audio range-finder and knockback stormassault slugs. Deals half damage at medium range and quarter damage at long range; four shots per reload." },
+  { id: "arma-29", name: "ARMA 29 Submachine Gun", cost: 0, category: "weapon", damage: "4d10", description: "Compact submachine gun with a collapsible stock for one-handed use and an ultra-capacity magazine." },
+  { id: "fn-slug-gun", name: "FN Slug Gun Revolver", cost: 0, category: "weapon", damage: "3d10", description: "Heavy slug revolver. Its kinetic slugs can knock a target down on a critical hit; five shots per reload." },
+  { id: "peabody-flare-gun", name: "Peabody Flare Gun", cost: 0, category: "weapon", damage: "1d10", description: "Flare pistol whose high-intensity flare is visible day or night from 25km away; two shots per reload." },
+  { id: "dc7-tranquilizer", name: "D&C 7 Tranquilizer Pistol", cost: 0, category: "weapon", damage: "N/A", description: "Target makes a Body save at Disadvantage or falls unconscious for 1d10 rounds; six shots per magazine." },
+  { id: "advanced-battle-dress", name: "Advanced Battle Dress", cost: 1500, category: "armor", description: "Heavy combat outfit worn by marines in offworld engagements. Confers +15% to Armor saves and includes a small exoskeleton that doubles normal carrying capacity." },
+  { id: "automed", name: "Automed", quantity: 6, cost: 300, category: "equipment", description: "Nanotech pills that assist the body in repairing damage. Grants +10% to Body saves against disease, poison, and healing attempts, and +10% to Fear saves made to reduce Stress." },
+  { id: "binoculars", name: "Binoculars", cost: 35, category: "equipment", description: "20× magnification, often with thermal and night-vision options." },
+  { id: "bioscanner", name: "Bioscanner", cost: 150, category: "equipment", description: "Scans for signs of life within 100m in all directions through most known metals. Reports location, but not the kind of life detected." },
+  { id: "body-cam", name: "Body Cam", cost: 50, category: "equipment", description: "Clothing-mounted camera that transmits video to a control center so other crew members can see what you are seeing." },
+  { id: "camping-gear", name: "Camping Gear", cost: 250, category: "equipment", description: "Tent, canteen, stove, backpack, and sleeping bag." },
+  { id: "crowbar", name: "Crowbar", cost: 25, category: "equipment", description: "Grants Advantage on Strength checks to open jammed airlocks or lift heavy objects. Can also be used as a weapon." },
+  { id: "cybernetic-diagnostic-scanner", name: "Cybernetic Diagnostic Scanner", cost: 500, category: "equipment", description: "Scans androids and other cybernetic organisms to diagnose physical or mental issues. Can locate synthetic organisms and is often distrusted by androids." },
+  { id: "electronic-tool-set", name: "Electronic Tool Set", cost: 650, category: "equipment", description: "Full set of tools for detailed electronic repair or construction. Grants +10% to rolls made to repair electronics." },
+  { id: "emergency-beacon", name: "Emergency Beacon", cost: 30, category: "equipment", description: "Small device that sends a repeating distress ping. Can be configured for silent use or old radio channels, and is difficult to conceal once active." },
+  { id: "field-recorder", name: "Field Recorder", cost: 50, category: "equipment", description: "Records up to 500 hours of video and audio. Can take vital signs and DNA samples and perform basic genetic and material analysis." },
+  { id: "first-aid-kit", name: "First Aid Kit", cost: 75, category: "equipment", description: "Grants +10% to rolls made to bandage wounds and stop bleeding." },
+  { id: "flashlight", name: "Flashlight", cost: 10, category: "equipment", description: "Handheld or shoulder-mounted light that illuminates 20m ahead of the user." },
+  { id: "frag-grenade", name: "Frag Grenade", quantity: 6, cost: 400, category: "equipment", description: "Deals 1d10 damage to everyone within 20m when it explodes. A carefully placed grenade can often inflict 1 MDmg on a ship engine, fuel line, or bridge." },
+  { id: "hazard-suit", name: "Hazard Suit", cost: 750, category: "armor", description: "Protects against chemical and radiation hazards and includes air filtration plus a small air supply. Not rated for outer space. Confers +5% to Armor saves." },
+  { id: "heads-up-display", name: "Heads-Up Display", cost: 75, category: "equipment", description: "Lets the wearer view allied body-cam feeds and connect to a smart-linked firearm." },
+  { id: "infrared-goggles", name: "Infrared Goggles", cost: 100, category: "equipment", description: "Allows the wearer to see heat signatures, sometimes several hours old." },
+  { id: "locator", name: "Locator", cost: 45, category: "equipment", description: "Allows crew at a control center or ship bridge to track the wearer's location." },
+  { id: "lockpick-set", name: "Lockpick Set", cost: 40, category: "equipment", description: "Advanced tools for hacking basic airlock and electronic door systems. Grants +10% to rolls made to open those doors." },
+  { id: "long-range-comms", name: "Long-range Comms", cost: 65, category: "equipment", description: "Used for ship-to-surface communication." },
+  { id: "mag-boots", name: "Mag-Boots", cost: 55, category: "equipment", description: "Magnetic footwear for walking on a ship's surface in zero gravity. Without power, the wearer becomes locked to the surface." },
+  { id: "medscanner", name: "Medscanner", cost: 150, category: "equipment", description: "Scans living or dead bodies for disease and abnormalities without requiring a biopsy or autopsy." },
+  { id: "mre", name: "MRE", quantity: 7, cost: 70, category: "equipment", description: "Self-contained field ration. Each meal sustains one person for one day but does not include water." },
+  { id: "oxygen-tank", name: "Oxygen Tank", cost: 50, category: "equipment", description: "Provides up to 12 hours of oxygen under normal conditions or 4 hours under stressful conditions when attached to a vaccsuit. Explosive." },
+  { id: "pain-pills", name: "Pain Pills", quantity: 6, cost: 450, category: "equipment", description: "Immediately heals 1d10 damage and lowers Stress by 1 when ingested. Frequent use risks addiction or overdose." },
+  { id: "radio-jammer", name: "Radio Jammer", cost: 175, category: "equipment", description: "Renders radio signals incomprehensible within 100km while active." },
+  { id: "rebreather", name: "Rebreather", cost: 45, category: "equipment", description: "Filters air and permits underwater breathing for up to 20 minutes at a time without resurfacing." },
+  { id: "scalpel", name: "Scalpel", cost: 50, category: "equipment", description: "Grants +10% to Surgery skill rolls. Can also be used as a weapon." },
+  { id: "short-range-comms", name: "Short-range Comms", cost: 30, category: "equipment", description: "Communication from ship to ship at reasonable distance or surface to surface within roughly a dozen kilometers." },
+  { id: "standard-battle-dress", name: "Standard Battle Dress", cost: 750, category: "armor", description: "Light plated marine combat armor. Confers +10% to Armor saves." },
+  { id: "standard-crew-attire", name: "Standard Crew Attire", cost: 20, category: "armor", description: "Coveralls, leather jackets, sneakers, tank tops, or ragged tees—the ordinary clothing worn aboard spacecraft." },
+  { id: "stimpak", name: "Stimpak", quantity: 6, cost: 600, category: "equipment", description: "Immediately restores 2d10 Health and temporarily increases Strength and Combat by 2d10 each for 1d10 hours. Frequent use risks addiction or overdose." },
+  { id: "survey-kit", name: "Survey Kit", cost: 200, category: "equipment", description: "Quickly maps several kilometers of a planet's surface and reports air breathability, gravity, and other important local features." },
+  { id: "vaccsuit", name: "Vaccsuit", cost: 1000, category: "armor", description: "Allows movement in space without radiation or vacuum injury. Requires an oxygen tank and is often paired with Mag-Boots. Confers +7% to Armor saves." },
+  { id: "vibechete", name: "Vibechete", cost: 75, category: "equipment", description: "An ultra-high-speed vibrating machete for cutting through dense foliage or flesh." },
+  { id: "water-filter", name: "Water Filter", cost: 15, category: "equipment", description: "Pumps and filters 50 liters of water per hour from most brackish swamps." },
+];
+
+export const catalogByCategory = (category) => EQUIPMENT_CATALOG.filter((item) => item.category === category);
+export const catalogItem = (id) => EQUIPMENT_CATALOG.find((item) => item.id === id);
+export const catalogForSavedItem = (item) => catalogItem(item.catalog_key) || EQUIPMENT_CATALOG.find((entry) => entry.name === item.name);
+
+export function equipmentPayload(item) {
+  return {
+    catalog_key: item.id,
+    name: item.name,
+    kind: item.category,
+    quantity: item.quantity || 1,
+    cost: item.cost,
+    details: item.description,
+    special: item.description,
+    equipped: item.category !== "equipment",
+    damage: item.damage || "",
+  };
+}
