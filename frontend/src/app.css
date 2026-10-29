@@ -16,6 +16,50 @@
   --mono: "Lucida Console", "Cascadia Mono", Consolas, monospace;
 }
 
+/* D&D 5e (2024) Release 1 workspace */
+.dnd-workspace { display: block; min-width: 0; }
+.dnd-tabs { display: flex; gap: .5rem; padding: .65rem 1rem; border-bottom: 1px solid var(--line, #48605b); }
+.dnd-tabs button.active { border-color: var(--accent, #4fc3a1); color: var(--accent, #4fc3a1); }
+.dnd-map-shell { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: .75rem; padding: .75rem; }
+.dnd-map-shell .battlemap-workspace { min-width: 0; }
+.dnd-rail { display: flex; flex-direction: column; gap: .75rem; max-height: calc(100vh - 110px); overflow: auto; }
+.dnd-side-panel, .dnd-reference, .dnd-card { border: 1px solid var(--line, #48605b); padding: .8rem; background: var(--panel, rgba(8, 20, 19, .92)); }
+.dnd-side-panel h3, .dnd-card h3 { margin-top: 0; }
+.dnd-feed { display: grid; gap: .5rem; }
+.dnd-feed article { display: grid; gap: .15rem; border-bottom: 1px solid var(--line, #48605b); padding-bottom: .45rem; }
+.dnd-feed article span, .dnd-feed article small { display: block; }
+.dnd-turns { padding-left: 1.5rem; }
+.dnd-turns li { padding: .3rem; }
+.dnd-turns small { float: right; opacity: .65; }
+.dnd-reference > article { border-top: 1px solid var(--line, #48605b); }
+.dnd-reference input { width: 100%; }
+.dnd-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 620px), 1fr)); gap: 1rem; padding: 1rem; }
+.dnd-card > header { display: flex; justify-content: space-between; align-items: start; }
+.dnd-card-grid, .ability-grid, .spell-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: .5rem; }
+.dnd-card label { display: grid; gap: .2rem; }
+.dnd-card input, .dnd-card select, .dnd-card textarea { min-width: 0; }
+.dnd-resources { display: flex; flex-wrap: wrap; align-items: end; gap: .55rem; margin: .75rem 0; }
+.dnd-resources > div { display: flex; align-items: center; gap: .25rem; border: 1px solid var(--line, #48605b); padding: .35rem; }
+.ability-grid > div { display: grid; grid-template-columns: 2.5rem 3.5rem 1fr 3.5rem 1fr; align-items: center; gap: .25rem; }
+.roll-composer, .dnd-list-row { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: .4rem 0; }
+.dnd-list-row input { flex: 1 1 110px; }
+.spell-grid input { width: 4rem; }
+.skill-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .4rem; }
+.skill-grid > div { display: flex; align-items: end; gap: .3rem; }
+.action-reminders { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin: .5rem 0; }
+.manual-note { opacity: .78; font-size: .86rem; }
+.token-health rect:first-child { fill: #291418; }
+.token-health rect:last-child { fill: #65bd74; }
+.token-health-readout { border: 1px solid var(--line, #48605b); padding: .35rem; }
+.token-condition-list { display: flex; flex-wrap: wrap; gap: .3rem; }
+.token-condition-list span { border: 1px solid var(--line, #48605b); padding-left: .35rem; }
+.dnd-card details { margin-top: .7rem; border-top: 1px solid var(--line, #48605b); padding-top: .55rem; }
+.dnd-card textarea { width: 100%; min-height: 6rem; }
+@media (max-width: 1050px) {
+  .dnd-map-shell { grid-template-columns: 1fr; }
+  .dnd-rail { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); max-height: none; }
+}
+
 * { box-sizing: border-box; }
 html { background: var(--black); }
 
