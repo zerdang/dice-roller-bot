@@ -14,6 +14,18 @@ services:
         value: /var/data/companion.db
       - key: COMPANION_ASSETS
         value: /var/data/companion-assets
+      - key: COMPANION_PUBLIC_URL
+        value: https://dm-screen.onrender.com
+      - key: DISCORD_REDIRECT_URI
+        value: https://dm-screen.onrender.com/auth/discord/callback
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: SESSION_TTL_SECONDS
+        value: 604800
+      - key: COMPANION_ALLOW_LEGACY_BEARER
+        value: "false"
     disk:
       name: tabletop-data
       mountPath: /var/data

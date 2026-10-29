@@ -432,6 +432,12 @@ The companion can run without a Discord connection or bot token:
 python standalone.py
 ```
 
+The hosted website uses Discord OAuth2 (`identify` only), server-side cookie
+sessions, and expiring single-use website invitations. Configuration, Render
+variables, verified-ID migration, backups, and the legacy bearer-link cutover
+are documented in [docs/discord-oauth.md](docs/discord-oauth.md). The normal
+production flow has `COMPANION_ALLOW_LEGACY_BEARER=false`.
+
 It binds to `HOST`/`PORT` (defaults `0.0.0.0:8080`) and serves a public, state-free health check at `/healthz`.
 Copy `.env.example` values into your process environment as needed; `.env` files are not loaded automatically.
 Render uses the checked-in multi-stage Docker build so the locked frontend tests/build happen reproducibly while the

@@ -19,14 +19,9 @@ class ApiError extends Error {
   }
 }
 
-function readAccessToken() {
-  const fragment = new URLSearchParams(window.location.hash.slice(1));
-  const freshToken = fragment.get("token");
-  if (freshToken) {
-    localStorage.setItem("tabletop-token", freshToken);
-    window.history.replaceState(null, "", window.location.pathname + window.location.search);
-  }
-  return freshToken || localStorage.getItem("tabletop-token") || "";
+function readCookie(name) {
+  const prefix = `${name}=`;
+  return document.cookie.split(";").map((value) => value.trim()).find((value) => value.startsWith(prefix))?.slice(prefix.length) || "";
 }
 
 function useUtcClock() {
@@ -876,13 +871,12 @@ function WardenWorkspace({ dashboard, request, refresh, reportError, toggleMapRe
   </section>;
 }
 
-export default function App() {
-  const token = useMemo(readAccessToken, []);
+function Workspace({ onLogout }) {
   const clock = useUtcClock();
   const [dashboard, setDashboard] = useState(null);
   const [selectedGame, setSelectedGame] = useState(preferredGame);
   const explicitGameApplied = useRef(false);
-  const [phase, setPhase] = useState(token ? "loading" : "locked");
+  const [phase, setPhase] = useState("loading");
   const [message, setMessage] = useState("");
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem("tabletop-theme");
@@ -905,18 +899,20 @@ export default function App() {
 
   const request = useCallback(async (path, options = {}) => {
     const { raw = false, ...fetchOptions } = options;
+    const method = (options.method || "GET").toUpperCase();
     const response = await fetch(path, {
       ...fetchOptions,
+      credentials: "same-origin",
       headers: {
-        Authorization: `Bearer ${token}`,
         ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+        ...(!["GET", "HEAD", "OPTIONS"].includes(method) ? { "X-CSRF-Token": decodeURIComponent(readCookie("dm_csrf")) } : {}),
         ...(options.headers || {}),
       },
     });
     if (!response.ok) throw new ApiError(response.status, await response.text());
     if (raw) return response;
     return response.status === 204 ? null : response.json();
-  }, [token]);
+  }, []);
 
   const refresh = useCallback(async (force = false) => {
     try {
@@ -931,27 +927,23 @@ export default function App() {
       setMessage("");
     } catch (error) {
       if (error.status === 401) {
-        localStorage.removeItem("tabletop-token");
         setDashboard(null);
-        setPhase("locked");
-        setMessage("That credential is invalid or has been replaced. Request a fresh link in Discord.");
+        onLogout();
       } else {
         setMessage("Relay interrupted. Retrying connection…");
         setPhase((current) => current === "ready" ? current : "offline");
       }
     }
-  }, [request]);
+  }, [request, onLogout]);
 
   useEffect(() => {
-    if (!token) return undefined;
     refresh();
     const timer = window.setInterval(refresh, 2500);
     return () => window.clearInterval(timer);
-  }, [refresh, token]);
+  }, [refresh]);
 
-  const clearCredential = () => {
-    localStorage.removeItem("tabletop-token");
-    window.location.reload();
+  const clearCredential = async () => {
+    try { await request("/api/auth/logout", { method: "POST" }); } finally { onLogout(); }
   };
 
   const reportError = (error) => setMessage(error?.message || "Terminal write failed.");
@@ -979,7 +971,7 @@ export default function App() {
         <div className="system-bar">
           <span>{dashboard ? `${dashboard.campaign.name} // ${dashboard.campaign.game_system.toUpperCase()} // ${roleLabel}` : "TABLETOP // LOCAL RELAY"}</span>
           <span>{clock}</span>
-          <span className="system-link">LINK: <b>{phase === "ready" ? "ENCRYPTED" : "PENDING"}</b><label className="game-picker"><span>GAME</span><select value={selectedGame} aria-label="Game" onChange={(event) => selectGame(event.target.value)}>{GAME_REGISTRY.map((game) => <option value={game.id} key={game.id}>{game.label}</option>)}</select></label>{theme === "crt" && <label className="crt-strength"><span>CRT</span><input type="range" min="0" max="100" value={crtStrength} aria-label="CRT effect strength" onChange={(event) => setCrtStrength(Number(event.target.value))} /><b>{crtStrength}%</b></label>}<label className="theme-picker"><span>DISPLAY</span><select value={theme} aria-label="Display theme" onChange={(event) => setTheme(event.target.value)}><option value="crt">CRT</option><option value="simple">SIMPLE</option><option value="fantasy">FANTASY</option></select></label>{token && <button className="credential-clear" type="button" onClick={clearCredential}>Exit</button>}</span>
+          <span className="system-link">LINK: <b>{phase === "ready" ? "ENCRYPTED" : "PENDING"}</b><label className="game-picker"><span>GAME</span><select value={selectedGame} aria-label="Game" onChange={(event) => selectGame(event.target.value)}>{GAME_REGISTRY.map((game) => <option value={game.id} key={game.id}>{game.label}</option>)}</select></label>{theme === "crt" && <label className="crt-strength"><span>CRT</span><input type="range" min="0" max="100" value={crtStrength} aria-label="CRT effect strength" onChange={(event) => setCrtStrength(Number(event.target.value))} /><b>{crtStrength}%</b></label>}<label className="theme-picker"><span>DISPLAY</span><select value={theme} aria-label="Display theme" onChange={(event) => setTheme(event.target.value)}><option value="crt">CRT</option><option value="simple">SIMPLE</option><option value="fantasy">FANTASY</option></select></label><button className="credential-clear" type="button" onClick={clearCredential}>Sign out</button></span>
         </div>
 
         {message && phase === "ready" && <div className="flash" role="status">SYS/WARN // {message}</div>}
@@ -1007,4 +999,130 @@ export default function App() {
       </div>
     </>
   );
+}
+
+async function sessionRequest(path, options = {}) {
+  const method = (options.method || "GET").toUpperCase();
+  const response = await fetch(path, {
+    ...options,
+    credentials: "same-origin",
+    headers: {
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(!["GET", "HEAD", "OPTIONS"].includes(method) ? { "X-CSRF-Token": decodeURIComponent(readCookie("dm_csrf")) } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  if (!response.ok) throw new ApiError(response.status, await response.text());
+  return response.status === 204 ? null : response.json();
+}
+
+function Landing({ error, invite }) {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(error || "");
+  const begin = async () => {
+    setBusy(true); setMessage("");
+    try {
+      const response = await fetch("/api/auth/begin", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invite: invite || null }),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      window.location.assign((await response.json()).authorize_url);
+    } catch (failure) { setMessage(failure.message || "Sign-in could not be started."); setBusy(false); }
+  };
+  return <main className="login-page">
+    <section className="login-card">
+      <div className="login-mark" aria-hidden="true">D20</div>
+      <p className="eyebrow">YOUR TABLE, ONE SCREEN</p>
+      <h1>DM Screen</h1>
+      <p className="login-copy">Campaign tools, character sheets, and a shared battlemap for your group.</p>
+      {invite && <p className="invite-notice">You have been invited to join a campaign. Sign in to accept.</p>}
+      {message && <p className="login-error" role="alert">{message}</p>}
+      <button className="discord-login" type="button" disabled={busy} onClick={begin}>
+        <span aria-hidden="true">◉</span>{busy ? "Connecting…" : "Continue with Discord"}
+      </button>
+      <small>We request only your basic Discord identity.</small>
+    </section>
+  </main>;
+}
+
+function CampaignHome({ account, reload, signOut, initialMessage = "" }) {
+  const [name, setName] = useState("");
+  const [game, setGame] = useState("dnd");
+  const [message, setMessage] = useState(initialMessage);
+  const [inviteUrl, setInviteUrl] = useState("");
+  const [invites, setInvites] = useState([]);
+  const [open, setOpen] = useState(false);
+  const active = account.campaigns.find((campaign) => campaign.id === account.active_campaign_id);
+  const select = async (campaignId) => {
+    await sessionRequest("/api/campaigns/select", { method: "POST", body: JSON.stringify({ campaign_id: Number(campaignId) }) });
+    await reload();
+  };
+  const create = async (event) => {
+    event.preventDefault(); setMessage("");
+    try {
+      await sessionRequest("/api/campaigns", { method: "POST", body: JSON.stringify({ name, game_system: game }) });
+      setName(""); setOpen(false); await reload();
+    } catch (failure) { setMessage(failure.message); }
+  };
+  const invite = async () => {
+    try {
+      const result = await sessionRequest("/api/invitations", { method: "POST", body: "{}" });
+      setInviteUrl(result.url); setOpen(true); setMessage("");
+      setInvites(await sessionRequest("/api/invitations"));
+    } catch (failure) { setMessage(failure.message); }
+  };
+  const revoke = async (tokenHash) => {
+    try {
+      await sessionRequest(`/api/invitations/${tokenHash}`, { method: "DELETE", body: "{}" });
+      setInvites(await sessionRequest("/api/invitations"));
+    } catch (failure) { setMessage(failure.message); }
+  };
+  const logout = async () => { try { await sessionRequest("/api/auth/logout", { method: "POST", body: "{}" }); } finally { signOut(); } };
+
+  return <>
+    <nav className="account-bar" aria-label="Account and campaign">
+      <a href="/" className="account-brand">DM Screen</a>
+      <div className="account-actions">
+        {account.campaigns.length > 0 && <label><span>Campaign</span><select value={account.active_campaign_id || ""} onChange={(event) => select(event.target.value)}>{!account.active_campaign_id && <option value="">Select campaign</option>}{account.campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name} · {campaign.role === "warden" ? "DM" : "Player"}</option>)}</select></label>}
+        {active?.role === "warden" && <button type="button" onClick={invite}>Invite player</button>}
+        <button type="button" onClick={() => { setInviteUrl(""); setOpen((value) => !value); }}>New campaign</button>
+        <span>{account.user.global_name || account.user.username}</span>
+        <button className="quiet" type="button" onClick={logout}>Sign out</button>
+      </div>
+    </nav>
+    {open && <section className="campaign-panel">
+      {inviteUrl ? <><p className="eyebrow">SINGLE-USE PLAYER INVITATION</p><h2>Invitation ready</h2><p>This link expires in seven days and grants player access only.</p><div className="invite-copy"><input readOnly value={inviteUrl} aria-label="Invitation URL" /><button type="button" onClick={() => navigator.clipboard?.writeText(inviteUrl)}>Copy</button></div>{invites.length > 0 && <div className="invite-list"><h3>Recent invitations</h3>{invites.map((entry) => <div key={entry.token_hash}><span>{entry.status} · {new Date(entry.created_at * 1000).toLocaleString()}</span>{entry.status === "active" && <button type="button" onClick={() => revoke(entry.token_hash)}>Revoke</button>}</div>)}</div>}</>
+        : <form onSubmit={create}><p className="eyebrow">NEW CAMPAIGN</p><h2>Create your table</h2><label><span>Name</span><input required maxLength="100" value={name} onChange={(event) => setName(event.target.value)} placeholder="The Sunless Citadel" /></label><label><span>Game</span><select value={game} onChange={(event) => setGame(event.target.value)}><option value="dnd">D&amp;D</option><option value="mothership">Mothership</option></select></label><button type="submit">Create campaign</button></form>}
+      {message && <p className="login-error" role="alert">{message}</p>}
+    </section>}
+    {!active ? <main className="empty-campaign"><section><p className="eyebrow">WELCOME ABOARD</p><h1>No campaigns yet</h1><p>Create a D&amp;D or Mothership campaign, or open an invitation from your DM.</p><button type="button" onClick={() => setOpen(true)}>Create your first campaign</button></section></main> : <Workspace onLogout={signOut} />}
+  </>;
+}
+
+export default function App() {
+  const [account, setAccount] = useState(null);
+  const [phase, setPhase] = useState("loading");
+  const [inviteError, setInviteError] = useState("");
+  const query = useMemo(() => new URLSearchParams(window.location.search), []);
+  const invite = useMemo(() => {
+    if (window.location.pathname.startsWith("/invite/")) return window.location.pathname.slice(8);
+    return new URLSearchParams(window.location.hash.slice(1)).get("invite") || "";
+  }, []);
+  const authMessage = { cancelled: "Discord sign-in was cancelled.", failed: "Sign-in failed or expired. Please try again." }[query.get("auth")] || "";
+  const load = useCallback(async () => {
+    try { setAccount(await sessionRequest("/api/auth/me")); setPhase("ready"); }
+    catch (error) { setAccount(null); setPhase(error.status === 401 ? "anonymous" : "error"); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (phase !== "ready" || !invite) return;
+    sessionRequest("/api/invitations/accept", { method: "POST", body: JSON.stringify({ token: invite }) })
+      .then(() => { window.history.replaceState(null, "", "/"); return load(); })
+      .catch((error) => { window.history.replaceState(null, "", "/?invite_error=1"); setInviteError(error.message || "This invitation is invalid or expired."); setPhase("invite-error"); });
+  }, [phase, invite, load]);
+  if (phase === "loading") return <section className="boot" aria-live="polite"><span>DM SCREEN</span><p>Opening your table…</p><div /></section>;
+  if (phase === "anonymous" || phase === "error") return <Landing error={phase === "error" ? "The server is temporarily unavailable." : authMessage} invite={invite} />;
+  if (phase === "invite-error") return <CampaignHome account={account} reload={load} initialMessage={inviteError} signOut={() => { setAccount(null); setPhase("anonymous"); }} />;
+  return <CampaignHome account={account} reload={load} signOut={() => { setAccount(null); setPhase("anonymous"); }} />;
 }

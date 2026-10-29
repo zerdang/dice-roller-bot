@@ -38,6 +38,92 @@ body::before {
   background: radial-gradient(ellipse at center, transparent 48%, #0008 100%);
 }
 
+.login-page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 28px;
+}
+
+.login-card {
+  width: min(460px, 100%);
+  padding: clamp(34px, 7vw, 58px);
+  border: 1px solid var(--line-hot);
+  background: linear-gradient(145deg, #14241dcc, #07100ceF);
+  box-shadow: 0 28px 90px #000b, inset 0 0 60px #0006;
+  text-align: center;
+}
+
+.login-mark {
+  display: grid;
+  width: 66px;
+  height: 66px;
+  margin: 0 auto 25px;
+  place-items: center;
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-size: 15px;
+  transform: rotate(45deg);
+}
+.login-mark::first-line { transform: rotate(-45deg); }
+.login-card h1 { margin-bottom: 16px; letter-spacing: -.045em; }
+.login-copy { margin-bottom: 28px; color: var(--dim); }
+.login-card small { display: block; margin-top: 18px; color: var(--dim); font-size: 9px; letter-spacing: .08em; }
+.discord-login { width: 100%; padding: 13px 18px; border-color: #8797ed; background: #5865f2; color: white; font-size: 13px; }
+.discord-login span { margin-right: 9px; }
+.invite-notice, .login-error { padding: 10px 12px; border: 1px solid var(--line); background: #0b1712; font-size: 11px; }
+.login-error { border-color: #87423a; color: #ff9a8c; }
+
+.account-bar {
+  position: relative;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 54px;
+  padding: 8px max(18px, calc((100vw - 1546px) / 2));
+  border-bottom: 1px solid var(--line);
+  background: #08110ef5;
+}
+.account-brand { color: var(--phosphor-hot); font-size: 16px; letter-spacing: -.05em; text-decoration: none; text-transform: uppercase; }
+.account-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
+.account-actions > span { color: var(--dim); font-size: 10px; }
+.account-actions label { display: flex; align-items: center; gap: 7px; margin: 0; }
+.account-actions label span { color: var(--dim); font-size: 8px; letter-spacing: .12em; text-transform: uppercase; }
+.account-actions select { width: min(260px, 32vw); padding: 5px 8px; }
+.account-actions button { padding: 6px 9px; font-size: 9px; }
+.account-bar + .campaign-panel, .campaign-panel {
+  position: relative;
+  z-index: 24;
+  width: min(620px, calc(100% - 34px));
+  margin: 16px auto 0;
+  padding: 22px;
+  border: 1px solid var(--line-hot);
+  background: #0a1511f5;
+  box-shadow: 0 18px 50px #000a;
+}
+.campaign-panel form { display: grid; grid-template-columns: 1fr 180px auto; align-items: end; gap: 12px; }
+.campaign-panel form > p, .campaign-panel form > h2 { grid-column: 1 / -1; }
+.campaign-panel label { display: grid; gap: 5px; }
+.campaign-panel label span { color: var(--dim); font-size: 9px; text-transform: uppercase; }
+.invite-copy { display: flex; gap: 8px; }
+.invite-copy input { flex: 1; }
+.invite-list { margin-top: 18px; }
+.invite-list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); color: var(--dim); font-size: 10px; text-transform: uppercase; }
+.invite-list button { padding: 4px 7px; font-size: 8px; }
+.empty-campaign { display: grid; min-height: calc(100vh - 55px); place-items: center; padding: 30px; text-align: center; }
+.empty-campaign section { width: min(560px, 100%); padding: 45px; border: 1px solid var(--line); background: #08100ddd; }
+.account-bar ~ .shell { min-height: calc(100vh - 88px); }
+
+@media (max-width: 760px) {
+  .account-bar { align-items: flex-start; flex-direction: column; }
+  .account-actions { width: 100%; flex-wrap: wrap; justify-content: flex-start; }
+  .account-actions label { width: 100%; }
+  .account-actions select { flex: 1; width: auto; }
+  .campaign-panel form { grid-template-columns: 1fr; }
+}
+
 .crt-overlay {
   position: fixed;
   inset: 0;
