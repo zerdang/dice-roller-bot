@@ -1081,7 +1081,9 @@ html[data-theme="fantasy"] .info-token:focus { border-color: var(--role-accent, 
 .map-token.selected circle { stroke: var(--amber); stroke-width: 6; }
 .map-token.locked { cursor: not-allowed; opacity: .8; }
 .map-token .token-tag { font-size: 9px; }
-.map-annotations { pointer-events: none; }
+.map-annotation { cursor: grab; outline: none; }
+.map-annotation.selected { filter: drop-shadow(0 0 5px var(--amber)); }
+.map-annotation.selected > * { stroke-width: 6; }
 .map-ruler { pointer-events: none; }
 .map-ruler line { stroke: #fff; stroke-width: 3; stroke-dasharray: 8 4; vector-effect: non-scaling-stroke; }
 .map-ruler text { fill: #fff; stroke: #000; stroke-width: 4px; paint-order: stroke; font: 13px var(--mono); }
@@ -1092,6 +1094,8 @@ html[data-theme="fantasy"] .info-token:focus { border-color: var(--role-accent, 
 .map-inspector input[type="checkbox"] { width: auto; }
 .counter-list > div { display: grid; grid-template-columns: 1fr 28px 32px 28px; align-items: center; gap: 3px; margin: 6px 0; }
 .counter-list b { text-align: center; }
+.preset-list { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 8px; }
+.preset-list > div { display: grid; grid-template-columns: 1fr auto; gap: 4px; margin: 4px 0; }
 .battlemap-empty { display: grid; place-items: center; min-height: 55vh; text-align: center; }
 html[data-theme="simple"] .map-stage, html[data-theme="fantasy"] .map-stage { text-shadow: none; }
 

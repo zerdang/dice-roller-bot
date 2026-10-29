@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+frontend/node_modules
+config
+current.log
+databases
+bugs
+feedback
+jokes
+__pycache__
+*.pyc
+tests

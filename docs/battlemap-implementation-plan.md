@@ -76,31 +76,36 @@ Errors use 400 validation, 401 authentication, 403 authorization, 404 filtered/n
 
 Baseline before battlemap edits: 27 Python tests and 14 frontend tests passed on the companion branch.
 
-Checkpoint results:
+Current results:
 
-- 38 Python tests pass, including legacy migration, dual-game campaigns, inactive scene/asset isolation, token
-  ownership, hidden/private filtering, stale writes, idempotent atomic counters, upload validation, world geometry,
-  and undo conflict refusal.
+- 51 Python tests pass, including legacy migration, dual-game campaigns, inactive scene/asset isolation, token
+  ownership, hidden/private filtering, stale writes, retry-safe scene/preset/asset/object mutations, upload validation,
+  world geometry, create/update/delete undo, a paired backup, standalone HTTP authorization, and restart persistence.
 - 18 frontend tests pass, including coordinate transforms, pointer-centered zoom, offset snapping, Euclidean distance,
   and all prior Mothership domain tests.
 - `npm run build --prefix frontend` succeeds and generated `web/` is current. `git diff --check` passes.
-- Two simulated player identities plus a Warden were exercised through the persistence layer. Restart recovery is
-  covered by reopening the SQLite-backed store, but a real six-browser rehearsal, touch/tablet test, and measured
-  peer latency/performance run have not yet been performed.
+- Two simulated player identities plus a Warden were exercised through the persistence layer. An aiohttp integration
+  test recreates the standalone service against the same database. A representative 50-token/30-annotation snapshot
+  completes below the one-second test threshold. A real six-browser rehearsal, touch/tablet test, screen-reader pass,
+  and measured peer latency run have not yet been performed.
 - Implemented UI/API: game selector and isolation, scene create/rename/duplicate/delete/activate, authorized uploads,
   grid controls, pan/zoom/fit, token create/assign/lock/hide/move/delete, counters/tags, shapes/markers, local ruler,
-  shared expiring pings, snapshot polling, save/connectivity indication, keyboard movement, and conflict-safe undo.
+  shared expiring pings, snapshot polling, save/connectivity indication, keyboard selection/movement, and conflict-safe
+  undo. Annotations can be selected, dragged, resized/rotated through numeric controls, locked/hidden, and deleted.
+  The inspector also exposes portrait upload, optional turn-order links, and preset create/edit/delete/apply.
+- `standalone.py`, a multi-stage Docker build, `/healthz`, environment configuration, a one-instance Render Blueprint,
+  persistent `/var/data` paths, and paired SQLite/asset backup instructions are implemented. The Discord integration
+  reuses the same application factory and the standalone process needs no bot token or Discord connection.
 
-Remaining acceptance work (do not label this checkpoint a complete release):
+Remaining release verification:
 
-1. Add annotation selection, drag/resize/rotation and numeric inspector editing; the current release places all five
-   annotation types but edits require the API rather than the UI.
-2. Add preset management/application UI; persistence and filtered API exist, but the workspace does not yet expose it.
-3. Add token portrait upload/selection and a turn-order token-link control; schema fields exist but UI linkage remains.
-4. Add explicit operation IDs to non-counter writes and broaden undo tests to create/delete/tag operations.
-5. Run a six-browser DM/player rehearsal, server restart check against copied fixture data, accessibility keyboard/screen
-   reader pass, and 50-token/30-annotation performance measurement.
-6. Let GitHub execute the new CI workflow on the draft PR; local checks cannot prove hosted Actions execution.
+1. Run a real six-browser DM/player rehearsal, including concurrent pointer edits and reconnect behavior.
+2. Complete touch/tablet and screen-reader testing; automated coverage does not substitute for these sessions.
+3. Build and smoke-test the Docker image. The local Docker Desktop Linux engine was unavailable, so the hosted CI
+   container job must provide the reproducible-image result.
+4. Inspect the hosted GitHub Actions run for the new commit; local checks cannot prove hosted Actions execution.
+5. After review/merge, perform the documented manual Render deployment and persistence/restart smoke check. No paid
+   service, secret, repository setting, or live campaign data has been changed by this branch.
 
-Exact next step: implement annotation selection and inspector edits in `frontend/src/Battlemap.jsx`, add corresponding
-frontend interaction tests, then expose preset creation/application before the multi-client rehearsal.
+Exact next step: push the verified feature commit, inspect hosted CI (including the Docker build), then conduct the
+manual multi-browser accessibility rehearsal before merging and deploying from `main`.

@@ -1,5 +1,6 @@
 import sqlite3
 import struct
+import time
 import tempfile
 import unittest
 from contextlib import closing
@@ -96,12 +97,98 @@ class BattlemapTests(unittest.TestCase):
             self.maps.undo(self.player)
         self.assertEqual(409, conflict.exception.status)
 
+    def test_undo_token_create_tag_update_and_delete(self):
+        created = self.maps.create_token(self.warden, self.scene["id"], {
+            "name": "Undo target", "tags": [{"key": "ready", "label": "Ready"}],
+        })
+        created_undo = self.maps.undo(self.warden)
+        self.assertEqual({"deleted": created["id"]}, created_undo["result"])
+
+        token = self.maps.create_token(self.warden, self.scene["id"], {"name": "Tag target"})
+        updated = self.maps.update_token(self.warden, token["id"], {
+            "revision": token["revision"], "tags": [{"key": "prone", "label": "Prone"}],
+        })
+        self.assertEqual("Prone", updated["tags"][0]["label"])
+        restored = self.maps.undo(self.warden)["result"]
+        self.assertEqual([], restored["tags"])
+
+        current = self.maps.snapshot(self.warden)["tokens"][0]
+        self.maps.delete_entity(self.warden, "token", current["id"], "delete-token-once")
+        deleted_undo = self.maps.undo(self.warden)["result"]
+        self.assertEqual(current["id"], deleted_undo["id"])
+
     def test_annotation_geometry_is_world_data(self):
         item = self.maps.create_annotation(self.player, self.scene["id"], {
             "kind": "cone", "label": "Breath", "geometry": {"x": 20, "y": 30, "radius": 60, "angle": 45, "rotation": 90}
         })
         self.assertEqual(60.0, item["geometry"]["radius"])
         self.assertEqual(self.first["id"], item["creator_character_id"])
+
+    def test_annotation_create_retry_and_delete_undo(self):
+        payload = {"kind": "circle", "geometry": {"x": 1, "y": 2, "radius": 3}, "operation_id": "circle-once"}
+        first = self.maps.create_annotation(self.player, self.scene["id"], payload)
+        duplicate = self.maps.create_annotation(self.player, self.scene["id"], payload)
+        self.assertEqual(first["id"], duplicate["id"])
+        self.maps.delete_entity(self.player, "annotation", first["id"], "delete-once")
+        self.maps.delete_entity(self.player, "annotation", first["id"], "delete-once")
+        restored = self.maps.undo(self.player)["result"]
+        self.assertEqual(first["id"], restored["id"])
+
+    def test_token_reference_must_belong_to_campaign(self):
+        other_campaign = self.companion.create_campaign("other", "Other", "dm", "dnd")
+        other, _ = self.companion.create_or_rotate_player("other", "outsider", "Outsider", "dnd")
+        self.assertNotEqual(self.warden["campaign_id"], other_campaign["id"])
+        with self.assertRaises(MapError):
+            self.maps.create_token(self.warden, self.scene["id"], {"name": "Bad", "owners": [other["id"]]})
+
+    def test_preset_delete_is_campaign_scoped(self):
+        preset = self.maps.upsert_preset(self.warden, {"kind": "tag", "name": "Prone", "payload": {"label": "Prone"}})
+        self.maps.delete_preset(self.warden, preset["id"])
+        self.assertEqual([], self.maps.snapshot(self.warden)["presets"])
+
+    def test_scene_writes_are_idempotent(self):
+        payload = {"name": "Retry room", "operation_id": "create-room-once"}
+        first = self.maps.create_scene(self.warden, payload)
+        duplicate = self.maps.create_scene(self.warden, payload)
+        self.assertEqual(first["id"], duplicate["id"])
+        update = {"revision": first["revision"], "name": "Renamed", "operation_id": "rename-room-once"}
+        changed = self.maps.update_scene(self.warden, first["id"], update)
+        retried = self.maps.update_scene(self.warden, first["id"], update)
+        self.assertEqual(changed, retried)
+        copied = self.maps.duplicate_scene(self.warden, first["id"], "copy-room-once")
+        copied_again = self.maps.duplicate_scene(self.warden, first["id"], "copy-room-once")
+        self.assertEqual(copied["id"], copied_again["id"])
+        self.maps.delete_scene(self.warden, copied["id"], "delete-room-once")
+        self.maps.delete_scene(self.warden, copied["id"], "delete-room-once")
+
+    def test_preset_writes_are_idempotent(self):
+        create = {"kind": "counter", "name": "Arrows", "payload": {"label": "Arrows", "value": 20},
+                  "operation_id": "create-preset-once"}
+        preset = self.maps.upsert_preset(self.warden, create)
+        self.assertEqual(preset["id"], self.maps.upsert_preset(self.warden, create)["id"])
+        update = {**create, "name": "Bolts", "operation_id": "update-preset-once"}
+        changed = self.maps.upsert_preset(self.warden, update, preset["id"])
+        self.assertEqual(changed, self.maps.upsert_preset(self.warden, update, preset["id"]))
+        self.maps.delete_preset(self.warden, preset["id"], "delete-preset-once")
+        self.maps.delete_preset(self.warden, preset["id"], "delete-preset-once")
+
+    def test_representative_fifty_token_thirty_annotation_snapshot(self):
+        with self.maps.connect() as db:
+            now = "now"
+            db.executemany(
+                "INSERT INTO map_token(scene_id,name,x,y,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+                [(self.scene["id"], f"Token {i}", i * 10, i * 5, now, now) for i in range(50)],
+            )
+            db.executemany(
+                "INSERT INTO map_annotation(scene_id,kind,label,geometry_json,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+                [(self.scene["id"], "circle", f"Area {i}", '{"x":1,"y":2,"radius":3}', now, now) for i in range(30)],
+            )
+        started = time.perf_counter()
+        state = self.maps.snapshot(self.warden)
+        elapsed = time.perf_counter() - started
+        self.assertEqual(50, len(state["tokens"]))
+        self.assertEqual(30, len(state["annotations"]))
+        self.assertLess(elapsed, 1.0)
 
     def test_asset_is_validated_and_inactive_asset_is_private(self):
         png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + struct.pack(">II", 320, 200) + b"fixture"
@@ -121,6 +208,13 @@ class BattlemapTests(unittest.TestCase):
     def test_rejects_invalid_image(self):
         with self.assertRaises(MapError):
             self.maps.store_asset(self.warden, "not-map.txt", b"not an image")
+
+    def test_asset_upload_retry_does_not_create_a_second_file(self):
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + struct.pack(">II", 32, 20) + b"fixture"
+        first = self.maps.store_asset(self.warden, "portrait.png", png, "upload-once")
+        duplicate = self.maps.store_asset(self.warden, "portrait.png", png, "upload-once")
+        self.assertEqual(first, duplicate)
+        self.assertEqual(1, len(list((Path(self.temp.name) / "assets").rglob("*.png"))))
 
 
 class GameMigrationTests(unittest.TestCase):

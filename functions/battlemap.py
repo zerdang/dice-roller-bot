@@ -71,6 +71,10 @@ CREATE TABLE IF NOT EXISTS map_operation (
     before_json TEXT, after_json TEXT, undone INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL, UNIQUE(actor_key, operation_id)
 );
+CREATE TABLE IF NOT EXISTS map_request (
+    actor_key TEXT NOT NULL, operation_id TEXT NOT NULL, response_json TEXT,
+    created_at TEXT NOT NULL, PRIMARY KEY(actor_key, operation_id)
+);
 CREATE INDEX IF NOT EXISTS map_scene_campaign ON map_scene(campaign_id, id);
 CREATE INDEX IF NOT EXISTS map_token_scene ON map_token(scene_id, id);
 CREATE INDEX IF NOT EXISTS map_annotation_scene ON map_annotation(scene_id, id);
@@ -119,7 +123,24 @@ class BattlemapStore:
 
     @staticmethod
     def _actor(auth: dict[str, Any]) -> str:
-        return "warden" if auth["role"] == "warden" else f"player:{auth['character_id']}"
+        identity = "warden" if auth["role"] == "warden" else f"player:{auth['character_id']}"
+        return f"campaign:{auth['campaign_id']}:{identity}"
+
+    def _request_result(self, db: sqlite3.Connection, auth: dict[str, Any], operation_id: str | None):
+        if not operation_id: return None
+        row = db.execute("SELECT response_json FROM map_request WHERE actor_key=? AND operation_id=?",
+                         (self._actor(auth), operation_id)).fetchone()
+        return json.loads(row["response_json"]) if row and row["response_json"] else None
+
+    def _save_request(self, db: sqlite3.Connection, auth: dict[str, Any], operation_id: str | None,
+                      response: dict[str, Any]) -> None:
+        if operation_id:
+            actor = self._actor(auth)
+            db.execute("INSERT OR IGNORE INTO map_request(actor_key,operation_id,response_json,created_at) VALUES(?,?,?,?)",
+                       (actor, operation_id, _json(response), _now()))
+            db.execute("DELETE FROM map_request WHERE actor_key=? AND operation_id NOT IN "
+                       "(SELECT operation_id FROM map_request WHERE actor_key=? ORDER BY rowid DESC LIMIT 500)",
+                       (actor, actor))
 
     @staticmethod
     def _require_dnd(auth: dict[str, Any]) -> None:
@@ -182,6 +203,9 @@ class BattlemapStore:
             raise MapError("Scene name is required")
         now = _now()
         with self.connect() as db:
+            operation_id = str(payload.get("operation_id", ""))[:100] or None
+            duplicate = self._request_result(db, auth, operation_id)
+            if duplicate: return duplicate
             active = not db.execute("SELECT 1 FROM map_scene WHERE campaign_id = ?", (auth["campaign_id"],)).fetchone()
             scene_id = db.execute(
                 "INSERT INTO map_scene(campaign_id,name,width,height,is_active,created_at,updated_at) "
@@ -190,12 +214,15 @@ class BattlemapStore:
                  max(100, int(payload.get("height", 900))), int(active), now, now),
             ).lastrowid
             row = db.execute("SELECT * FROM map_scene WHERE id = ?", (scene_id,)).fetchone()
-        return self._scene_doc(row)
+            result = self._scene_doc(row); self._save_request(db, auth, operation_id, result)
+        return result
 
-    def duplicate_scene(self, auth: dict[str, Any], scene_id: int) -> dict[str, Any]:
+    def duplicate_scene(self, auth: dict[str, Any], scene_id: int, operation_id: str | None = None) -> dict[str, Any]:
         self._require_dnd(auth)
         if auth["role"] != "warden": raise MapError("Only the DM can duplicate scenes", 403)
         with self.connect() as db:
+            duplicate = self._request_result(db, auth, operation_id)
+            if duplicate: return duplicate
             source = self._scene(db, auth, scene_id, True); now = _now()
             new_id = db.execute(
                 "INSERT INTO map_scene(campaign_id,name,asset_id,width,height,grid_visible,grid_size,grid_offset_x,grid_offset_y,units_per_square,unit_label,snap_enabled,is_active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)",
@@ -203,21 +230,27 @@ class BattlemapStore:
             db.execute("INSERT INTO map_token(scene_id,name,kind,x,y,size,color,portrait_asset_id,character_id,owners_json,locked,hidden,counters_json,tags_json,turn_entry_id,created_at,updated_at) SELECT ?,name,kind,x,y,size,color,portrait_asset_id,character_id,owners_json,locked,hidden,counters_json,tags_json,turn_entry_id,?,? FROM map_token WHERE scene_id=?", (new_id, now, now, scene_id))
             db.execute("INSERT INTO map_annotation(scene_id,kind,label,geometry_json,color,opacity,icon,creator_character_id,locked,hidden,created_at,updated_at) SELECT ?,kind,label,geometry_json,color,opacity,icon,creator_character_id,locked,hidden,?,? FROM map_annotation WHERE scene_id=?", (new_id, now, now, scene_id))
             row = db.execute("SELECT * FROM map_scene WHERE id=?", (new_id,)).fetchone()
-        return self._scene_doc(row)
+            result = self._scene_doc(row); self._save_request(db, auth, operation_id, result)
+        return result
 
-    def delete_scene(self, auth: dict[str, Any], scene_id: int) -> None:
+    def delete_scene(self, auth: dict[str, Any], scene_id: int, operation_id: str | None = None) -> None:
         self._require_dnd(auth)
         if auth["role"] != "warden": raise MapError("Only the DM can delete scenes", 403)
         with self.connect() as db:
+            if self._request_result(db, auth, operation_id): return
             scene = self._scene(db, auth, scene_id, True)
             db.execute("DELETE FROM map_scene WHERE id=?", (scene_id,))
             if scene["is_active"]:
                 replacement = db.execute("SELECT id FROM map_scene WHERE campaign_id=? ORDER BY id LIMIT 1", (auth["campaign_id"],)).fetchone()
                 if replacement: db.execute("UPDATE map_scene SET is_active=1,revision=revision+1,updated_at=? WHERE id=?", (_now(), replacement["id"]))
+            self._save_request(db, auth, operation_id, {"ok": True})
 
     def update_scene(self, auth: dict[str, Any], scene_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         self._require_dnd(auth)
         with self.connect() as db:
+            operation_id = str(payload.get("operation_id", ""))[:100] or None
+            duplicate = self._request_result(db, auth, operation_id)
+            if duplicate: return duplicate
             row = self._scene(db, auth, scene_id, True)
             expected = int(payload.get("revision", row["revision"]))
             if expected != row["revision"]:
@@ -238,7 +271,8 @@ class BattlemapStore:
                     db.execute(f"UPDATE map_scene SET {sets},revision=revision+1,updated_at=? WHERE id=? AND revision=?",
                                (*clean.values(), _now(), scene_id, expected))
             updated = db.execute("SELECT * FROM map_scene WHERE id=?", (scene_id,)).fetchone()
-        return self._scene_doc(updated)
+            result = self._scene_doc(updated); self._save_request(db, auth, operation_id, result)
+        return result
 
     @staticmethod
     def _image_info(data: bytes) -> tuple[str, int, int]:
@@ -272,27 +306,33 @@ class BattlemapStore:
                 return "image/webp", int.from_bytes(body[6:8], "little") & 0x3FFF, int.from_bytes(body[8:10], "little") & 0x3FFF
         raise MapError("Upload must be a valid PNG, JPEG, or WebP image")
 
-    def store_asset(self, auth: dict[str, Any], name: str, data: bytes) -> dict[str, Any]:
+    def store_asset(self, auth: dict[str, Any], name: str, data: bytes,
+                    operation_id: str | None = None) -> dict[str, Any]:
         self._require_dnd(auth)
         if auth["role"] != "warden": raise MapError("Only the DM can upload maps", 403)
         if not data or len(data) > 20 * 1024 * 1024: raise MapError("Map image must be 20 MiB or smaller")
         media_type, width, height = self._image_info(data)
         if width < 1 or height < 1 or width > 12000 or height > 12000 or width * height > 80_000_000:
             raise MapError("Map dimensions exceed the 12,000 px / 80 megapixel limit")
-        asset_id = secrets.token_urlsafe(18)
-        extension = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}[media_type]
-        folder = self.asset_root / str(auth["campaign_id"])
-        folder.mkdir(parents=True, exist_ok=True)
-        path = folder / f"{asset_id}{extension}"
-        path.write_bytes(data)
-        try:
-            with self.connect() as db:
+        operation_id = str(operation_id or "")[:100] or None
+        with self.connect() as db:
+            duplicate = self._request_result(db, auth, operation_id)
+            if duplicate: return duplicate
+            asset_id = secrets.token_urlsafe(18)
+            extension = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}[media_type]
+            folder = self.asset_root / str(auth["campaign_id"])
+            folder.mkdir(parents=True, exist_ok=True)
+            path = folder / f"{asset_id}{extension}"
+            path.write_bytes(data)
+            try:
                 db.execute("INSERT INTO map_asset(id,campaign_id,media_type,original_name,width,height,byte_size,created_at) VALUES(?,?,?,?,?,?,?,?)",
                            (asset_id, auth["campaign_id"], media_type, str(name)[:200], width, height, len(data), _now()))
-        except Exception:
-            path.unlink(missing_ok=True)
-            raise
-        return {"id": asset_id, "media_type": media_type, "original_name": str(name)[:200], "width": width, "height": height, "byte_size": len(data)}
+                result = {"id": asset_id, "media_type": media_type, "original_name": str(name)[:200], "width": width, "height": height, "byte_size": len(data)}
+                self._save_request(db, auth, operation_id, result)
+            except Exception:
+                path.unlink(missing_ok=True)
+                raise
+        return result
 
     def asset(self, auth: dict[str, Any], asset_id: str) -> tuple[Path, str]:
         self._require_dnd(auth)
@@ -300,8 +340,10 @@ class BattlemapStore:
             row = db.execute("SELECT * FROM map_asset WHERE id=? AND campaign_id=?", (asset_id, auth["campaign_id"])).fetchone()
             if not row: raise MapError("Asset not found", 404)
             if auth["role"] != "warden" and not db.execute(
-                "SELECT 1 FROM map_scene WHERE campaign_id=? AND is_active=1 AND asset_id=?",
-                (auth["campaign_id"], asset_id),
+                "SELECT 1 FROM map_scene s LEFT JOIN map_token t ON t.scene_id=s.id "
+                "WHERE s.campaign_id=? AND s.is_active=1 AND "
+                "(s.asset_id=? OR (t.portrait_asset_id=? AND t.hidden=0))",
+                (auth["campaign_id"], asset_id, asset_id),
             ).fetchone(): raise MapError("Asset not found", 404)
         extension = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}[row["media_type"]]
         path = self.asset_root / str(auth["campaign_id"]) / f"{asset_id}{extension}"
@@ -353,6 +395,27 @@ class BattlemapStore:
     def _can_token(self, auth: dict[str, Any], row: sqlite3.Row) -> bool:
         return auth["role"] == "warden" or (not row["locked"] and auth["character_id"] in json.loads(row["owners_json"] or "[]"))
 
+    @staticmethod
+    def _validate_token_refs(db: sqlite3.Connection, auth: dict[str, Any], clean: dict[str, Any]) -> None:
+        campaign_id = auth["campaign_id"]
+        owners = clean.get("owners")
+        if owners is not None:
+            found = {row[0] for row in db.execute(
+                f"SELECT id FROM character WHERE campaign_id=? AND id IN ({','.join('?' for _ in owners) or 'NULL'})",
+                (campaign_id, *owners),
+            )}
+            if found != set(owners): raise MapError("Token owner is outside this campaign", 400)
+        checks = (
+            ("character_id", "character", "id"),
+            ("turn_entry_id", "turn_entry", "id"),
+            ("portrait_asset_id", "map_asset", "id"),
+        )
+        for key, table, column in checks:
+            value = clean.get(key)
+            if value is not None and not db.execute(
+                f"SELECT 1 FROM {table} WHERE {column}=? AND campaign_id=?", (value, campaign_id)
+            ).fetchone(): raise MapError(f"{key} is outside this campaign", 400)
+
     def _record(self, db: sqlite3.Connection, auth: dict[str, Any], scene_id: int,
                 entity_type: str, entity_id: int, action: str,
                 before: dict[str, Any] | None, after: dict[str, Any] | None,
@@ -370,7 +433,13 @@ class BattlemapStore:
         if auth["role"] != "warden": raise MapError("Only the DM can create tokens", 403)
         now = _now(); clean = self._clean_token(payload, True)
         with self.connect() as db:
+            operation_id = str(payload.get("operation_id", ""))[:100] or None
+            if operation_id:
+                duplicate = db.execute("SELECT after_json FROM map_operation WHERE actor_key=? AND operation_id=?",
+                                       (self._actor(auth), operation_id)).fetchone()
+                if duplicate: return json.loads(duplicate["after_json"])
             self._scene(db, auth, scene_id)
+            self._validate_token_refs(db, auth, clean)
             token_id = db.execute(
                 "INSERT INTO map_token(scene_id,name,kind,x,y,size,color,character_id,owners_json,locked,hidden,counters_json,tags_json,turn_entry_id,created_at,updated_at) "
                 "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -378,7 +447,7 @@ class BattlemapStore:
                  clean.get("character_id"), _json(clean["owners"]), int(clean["locked"]), int(clean["hidden"]),
                  _json(clean["counters"]), _json(clean["tags"]), clean.get("turn_entry_id"), now, now)).lastrowid
             row = db.execute("SELECT * FROM map_token WHERE id=?", (token_id,)).fetchone()
-            self._record(db, auth, scene_id, "token", token_id, "create", None, self._token_doc(row))
+            self._record(db, auth, scene_id, "token", token_id, "create", None, self._token_doc(row), operation_id)
         return self._token_doc(row)
 
     @staticmethod
@@ -404,6 +473,11 @@ class BattlemapStore:
     def update_token(self, auth: dict[str, Any], token_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         self._require_dnd(auth)
         with self.connect() as db:
+            operation_id = str(payload.get("operation_id", ""))[:100] or None
+            if operation_id:
+                duplicate = db.execute("SELECT after_json FROM map_operation WHERE actor_key=? AND operation_id=?",
+                                       (self._actor(auth), operation_id)).fetchone()
+                if duplicate: return json.loads(duplicate["after_json"])
             row = db.execute("SELECT t.* FROM map_token t JOIN map_scene s ON s.id=t.scene_id WHERE t.id=? AND s.campaign_id=?",
                              (token_id, auth["campaign_id"])).fetchone()
             if not row: raise MapError("Token not found", 404)
@@ -416,6 +490,7 @@ class BattlemapStore:
             if auth["role"] != "warden":
                 for key in ("owners", "locked", "hidden", "character_id", "turn_entry_id", "portrait_asset_id"):
                     clean.pop(key, None)
+            self._validate_token_refs(db, auth, clean)
             columns = {"owners": "owners_json", "counters": "counters_json", "tags": "tags_json"}
             encoded = {columns.get(k, k): (_json(v) if k in columns else int(v) if k in {"locked", "hidden"} else v)
                        for k, v in clean.items()}
@@ -425,7 +500,7 @@ class BattlemapStore:
                                      (*encoded.values(), _now(), token_id, expected)).rowcount
                 if not changed: raise MapError("Token changed; refresh and retry", 409)
             updated = db.execute("SELECT * FROM map_token WHERE id=?", (token_id,)).fetchone()
-            if encoded: self._record(db, auth, row["scene_id"], "token", token_id, "update", before, self._token_doc(updated))
+            if encoded: self._record(db, auth, row["scene_id"], "token", token_id, "update", before, self._token_doc(updated), operation_id)
         return self._token_doc(updated, auth["role"] != "warden")
 
     def counter_delta(self, auth: dict[str, Any], token_id: int, key: str, delta: int,
@@ -459,6 +534,11 @@ class BattlemapStore:
     def create_annotation(self, auth: dict[str, Any], scene_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         self._require_dnd(auth); clean = self._clean_annotation(payload, True); now = _now()
         with self.connect() as db:
+            operation_id = str(payload.get("operation_id", ""))[:100] or None
+            if operation_id:
+                duplicate = db.execute("SELECT after_json FROM map_operation WHERE actor_key=? AND operation_id=?",
+                                       (self._actor(auth), operation_id)).fetchone()
+                if duplicate: return json.loads(duplicate["after_json"])
             self._scene(db, auth, scene_id)
             creator = None if auth["role"] == "warden" else auth["character_id"]
             item_id = db.execute(
@@ -466,12 +546,17 @@ class BattlemapStore:
                 (scene_id, clean["kind"], clean["label"], _json(clean["geometry"]), clean["color"], clean["opacity"],
                  clean["icon"], creator, int(clean["locked"]), int(clean["hidden"]), now, now)).lastrowid
             row = db.execute("SELECT * FROM map_annotation WHERE id=?", (item_id,)).fetchone()
-            self._record(db, auth, scene_id, "annotation", item_id, "create", None, self._annotation_doc(row))
+            self._record(db, auth, scene_id, "annotation", item_id, "create", None, self._annotation_doc(row), operation_id)
         return self._annotation_doc(row)
 
     def update_annotation(self, auth: dict[str, Any], item_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         self._require_dnd(auth)
         with self.connect() as db:
+            operation_id = str(payload.get("operation_id", ""))[:100] or None
+            if operation_id:
+                duplicate = db.execute("SELECT after_json FROM map_operation WHERE actor_key=? AND operation_id=?",
+                                       (self._actor(auth), operation_id)).fetchone()
+                if duplicate: return json.loads(duplicate["after_json"])
             row = db.execute("SELECT a.* FROM map_annotation a JOIN map_scene s ON s.id=a.scene_id WHERE a.id=? AND s.campaign_id=?",
                              (item_id, auth["campaign_id"])).fetchone()
             if not row: raise MapError("Annotation not found", 404)
@@ -490,14 +575,17 @@ class BattlemapStore:
             db.execute(f"UPDATE map_annotation SET {sets},revision=revision+1,updated_at=? WHERE id=? AND revision=?",
                        (*encoded.values(), _now(), item_id, expected))
             updated = db.execute("SELECT * FROM map_annotation WHERE id=?", (item_id,)).fetchone()
-            self._record(db, auth, row["scene_id"], "annotation", item_id, "update", before, self._annotation_doc(updated))
+            self._record(db, auth, row["scene_id"], "annotation", item_id, "update", before, self._annotation_doc(updated), operation_id)
         return self._annotation_doc(updated)
 
-    def delete_entity(self, auth: dict[str, Any], entity_type: str, entity_id: int) -> None:
+    def delete_entity(self, auth: dict[str, Any], entity_type: str, entity_id: int,
+                      operation_id: str | None = None) -> None:
         self._require_dnd(auth)
         if entity_type not in {"token", "annotation"}: raise MapError("Invalid entity")
         table = "map_token" if entity_type == "token" else "map_annotation"
         with self.connect() as db:
+            if operation_id and db.execute("SELECT 1 FROM map_operation WHERE actor_key=? AND operation_id=?",
+                                           (self._actor(auth), operation_id)).fetchone(): return
             row = db.execute(f"SELECT e.* FROM {table} e JOIN map_scene s ON s.id=e.scene_id WHERE e.id=? AND s.campaign_id=?",
                              (entity_id, auth["campaign_id"])).fetchone()
             if not row: raise MapError("Map object not found", 404)
@@ -506,7 +594,7 @@ class BattlemapStore:
                 raise MapError("Annotation cannot be removed", 403)
             before = self._token_doc(row) if entity_type == "token" else self._annotation_doc(row)
             db.execute(f"DELETE FROM {table} WHERE id=?", (entity_id,))
-            self._record(db, auth, row["scene_id"], entity_type, entity_id, "delete", before, None)
+            self._record(db, auth, row["scene_id"], entity_type, entity_id, "delete", before, None, operation_id)
 
     def undo(self, auth: dict[str, Any]) -> dict[str, Any]:
         self._require_dnd(auth); actor = self._actor(auth)
@@ -574,6 +662,9 @@ class BattlemapStore:
         value = payload.get("payload", {})
         if not name or not isinstance(value, dict): raise MapError("Preset name and payload are required")
         with self.connect() as db:
+            operation_id = str(payload.get("operation_id", ""))[:100] or None
+            duplicate = self._request_result(db, auth, operation_id)
+            if duplicate: return duplicate
             if preset_id:
                 changed = db.execute("UPDATE map_preset SET kind=?,name=?,payload_json=?,is_private=?,revision=revision+1 WHERE id=? AND campaign_id=?",
                                      (kind, name, _json(value), int(bool(payload.get("is_private"))), preset_id, auth["campaign_id"])).rowcount
@@ -582,4 +673,16 @@ class BattlemapStore:
                 preset_id = db.execute("INSERT INTO map_preset(campaign_id,kind,name,payload_json,is_private) VALUES(?,?,?,?,?)",
                                        (auth["campaign_id"], kind, name, _json(value), int(bool(payload.get("is_private"))))).lastrowid
             row = db.execute("SELECT * FROM map_preset WHERE id=?", (preset_id,)).fetchone()
-        data = dict(row); data["payload"] = json.loads(data.pop("payload_json")); data["is_private"] = bool(data["is_private"]); return data
+            data = dict(row); data["payload"] = json.loads(data.pop("payload_json")); data["is_private"] = bool(data["is_private"])
+            self._save_request(db, auth, operation_id, data)
+        return data
+
+    def delete_preset(self, auth: dict[str, Any], preset_id: int, operation_id: str | None = None) -> None:
+        self._require_dnd(auth)
+        if auth["role"] != "warden": raise MapError("Only the DM can manage presets", 403)
+        with self.connect() as db:
+            if self._request_result(db, auth, operation_id): return
+            if not db.execute("DELETE FROM map_preset WHERE id=? AND campaign_id=?",
+                              (preset_id, auth["campaign_id"])).rowcount:
+                raise MapError("Preset not found", 404)
+            self._save_request(db, auth, operation_id, {"ok": True})

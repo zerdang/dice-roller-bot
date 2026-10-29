@@ -424,6 +424,23 @@ npm run dev
 Vite proxies `/api` requests to the local bot. Production changes should always
 be followed by `npm run build` so the `web/` output matches the React source.
 
+### Standalone web service and Render
+
+The companion can run without a Discord connection or bot token:
+
+```console
+python standalone.py
+```
+
+It binds to `HOST`/`PORT` (defaults `0.0.0.0:8080`) and serves a public, state-free health check at `/healthz`.
+Copy `.env.example` values into your process environment as needed; `.env` files are not loaded automatically.
+Render uses the checked-in multi-stage Docker build so the locked frontend tests/build happen reproducibly while the
+runtime image remains Python-only.
+
+See [docs/render-deployment.md](docs/render-deployment.md) for the exact Render form values, `/var/data` persistent
+disk layout, manual-deploy policy, authentication boundaries, backup/restore steps, and rollback checklist. Do not
+deploy `main` until the companion baseline and stacked battlemap PR have both been reviewed and integrated.
+
 
 ## Future features
 - help improvement

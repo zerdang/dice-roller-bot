@@ -35,6 +35,7 @@ class BattlemapApi:
         app.router.add_post("/api/battlemap/pings", self.post_ping)
         app.router.add_post("/api/battlemap/presets", self.create_preset)
         app.router.add_patch("/api/battlemap/presets/{preset_id}", self.update_preset)
+        app.router.add_delete("/api/battlemap/presets/{preset_id}", self.delete_preset)
 
     @staticmethod
     async def games(_request: web.Request) -> web.Response:
@@ -83,12 +84,12 @@ class BattlemapApi:
         return await self._run(action)
 
     async def duplicate_scene(self, request):
-        async def action(): return web.json_response(self.store.duplicate_scene(self.auth(request), self._id(request, "scene_id")), status=201)
+        async def action(): return web.json_response(self.store.duplicate_scene(self.auth(request), self._id(request, "scene_id"), request.headers.get("X-Operation-ID")), status=201)
         return await self._run(action)
 
     async def delete_scene(self, request):
         async def action():
-            self.store.delete_scene(self.auth(request), self._id(request, "scene_id")); return web.Response(status=204)
+            self.store.delete_scene(self.auth(request), self._id(request, "scene_id"), request.headers.get("X-Operation-ID")); return web.Response(status=204)
         return await self._run(action)
 
     async def state(self, request):
@@ -113,7 +114,7 @@ class BattlemapApi:
                 total += len(chunk)
                 if total > 20 * 1024 * 1024: raise MapError("Map image must be 20 MiB or smaller")
                 chunks.append(chunk)
-            return web.json_response(self.store.store_asset(self.auth(request), part.filename or "map", b"".join(chunks)), status=201)
+            return web.json_response(self.store.store_asset(self.auth(request), part.filename or "map", b"".join(chunks), request.headers.get("X-Operation-ID")), status=201)
         return await self._run(action)
 
     async def get_asset(self, request):
@@ -144,7 +145,7 @@ class BattlemapApi:
         async def action():
             kind = {"tokens": "token", "annotations": "annotation"}.get(request.match_info["entity_type"])
             if not kind: raise MapError("Invalid map object")
-            self.store.delete_entity(self.auth(request), kind, self._id(request, "entity_id"))
+            self.store.delete_entity(self.auth(request), kind, self._id(request, "entity_id"), request.headers.get("X-Operation-ID"))
             return web.Response(status=204)
         return await self._run(action)
 
@@ -176,4 +177,9 @@ class BattlemapApi:
 
     async def update_preset(self, request):
         async def action(): return web.json_response(self.store.upsert_preset(self.auth(request), await self._body(request), self._id(request, "preset_id")))
+        return await self._run(action)
+
+    async def delete_preset(self, request):
+        async def action():
+            self.store.delete_preset(self.auth(request), self._id(request, "preset_id"), request.headers.get("X-Operation-ID")); return web.Response(status=204)
         return await self._run(action)

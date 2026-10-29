@@ -11,7 +11,7 @@ from discord.ext import commands
 from functions.companion import CompanionStore
 from functions.battlemap import BattlemapStore
 from cogs.battlemap_api import BattlemapApi
-from functions.config import companion_db, companion_enabled, companion_host, companion_port, companion_public_url
+from functions.config import companion_assets, companion_db, companion_enabled, companion_host, companion_port, companion_public_url
 
 
 WEB_ROOT = Path(__file__).resolve().parent.parent / "web"
@@ -20,16 +20,25 @@ WEB_ROOT = Path(__file__).resolve().parent.parent / "web"
 class Companion(commands.Cog):
     tabletop = app_commands.Group(name="tabletop", description="Manage the tabletop companion")
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: commands.Bot | None, db_path: str = companion_db,
+                 asset_root: str = companion_assets):
         self.bot = bot
-        self.store = CompanionStore(companion_db)
-        self.battlemap = BattlemapStore(companion_db)
+        self.store = CompanionStore(db_path)
+        self.battlemap = BattlemapStore(db_path, asset_root)
         self.runner: web.AppRunner | None = None
 
     async def cog_load(self) -> None:
         if not companion_enabled:
             return
+        app = self.create_web_app()
+        self.runner = web.AppRunner(app)
+        await self.runner.setup()
+        await web.TCPSite(self.runner, companion_host, companion_port).start()
+
+    def create_web_app(self) -> web.Application:
+        """Build the authenticated web application without connecting to Discord."""
         app = web.Application(client_max_size=21 * 1024 * 1024)
+        app.router.add_get("/healthz", self.health)
         app.router.add_get("/", self.index)
         app.router.add_static("/assets/", WEB_ROOT / "assets")
         app.router.add_static("/images/", WEB_ROOT / "images")
@@ -46,9 +55,7 @@ class Companion(commands.Cog):
         app.router.add_patch("/api/items/{item_id}", self.patch_item)
         app.router.add_delete("/api/items/{item_id}", self.delete_item)
         BattlemapApi(self.battlemap, self.auth).register(app)
-        self.runner = web.AppRunner(app)
-        await self.runner.setup()
-        await web.TCPSite(self.runner, companion_host, companion_port).start()
+        return app
 
     async def cog_unload(self) -> None:
         if self.runner:
@@ -57,6 +64,10 @@ class Companion(commands.Cog):
     @staticmethod
     async def index(_request: web.Request) -> web.FileResponse:
         return web.FileResponse(WEB_ROOT / "index.html")
+
+    @staticmethod
+    async def health(_request: web.Request) -> web.Response:
+        return web.json_response({"status": "ok"}, headers={"Cache-Control": "no-store"})
 
     def auth(self, request: web.Request):
         header = request.headers.get("Authorization", "")

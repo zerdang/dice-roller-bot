@@ -50,8 +50,13 @@ jobs:
           retention-days: 14
           path: |
             bot.py
+            standalone.py
+            Dockerfile
+            render.yaml
+            .env.example
             cogs/
             functions/
+            scripts/
             migrations/
             models/
             ui/
@@ -59,3 +64,11 @@ jobs:
             requirements.txt
             README.md
             LICENSE
+
+  render-container:
+    name: Render container build
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --tag dice-roller-tabletop:${{ github.sha }} .

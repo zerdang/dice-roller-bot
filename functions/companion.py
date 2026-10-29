@@ -14,6 +14,7 @@ import secrets
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Iterator
 
 
@@ -142,6 +143,8 @@ GAME_SYSTEMS = {"dnd", "mothership"}
 class CompanionStore:
     def __init__(self, path: str):
         self.path = path
+        if path != ":memory:":
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript(SCHEMA)
             self._migrate_campaign(db)
