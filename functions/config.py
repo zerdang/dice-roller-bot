@@ -41,6 +41,13 @@ metrics_python_ext = config.getboolean("metrics", "python_ext")
 db_jokes = config.get("db", "jokes")
 db_admin = config.get("db", "admin")
 db_user = config.get("db", "user")
+companion_db = config.get("db", "companion", fallback="databases/companion.db")
+
+# tabletop companion web server (all options are backwards-compatible defaults)
+companion_enabled = config.getboolean("companion", "enable", fallback=False)
+companion_host = config.get("companion", "host", fallback="127.0.0.1")
+companion_port = config.getint("companion", "port", fallback=8080)
+companion_public_url = config.get("companion", "public_url", fallback=f"http://localhost:{companion_port}")
 
 # directories
 dir_feedback = config.get("dir", "feedback")
