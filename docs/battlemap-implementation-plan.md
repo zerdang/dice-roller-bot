@@ -96,16 +96,16 @@ Current results:
 - `standalone.py`, a multi-stage Docker build, `/healthz`, environment configuration, a one-instance Render Blueprint,
   persistent `/var/data` paths, and paired SQLite/asset backup instructions are implemented. The Discord integration
   reuses the same application factory and the standalone process needs no bot token or Discord connection.
+- GitHub Actions run `40825114614` passed its Python 3.12 backend suite, Node 22 frontend test/build/artifact job, and
+  Render Docker image build. The local Docker Desktop Linux engine was unavailable, but the hosted build verifies the
+  checked-in container definition on Linux.
 
 Remaining release verification:
 
 1. Run a real six-browser DM/player rehearsal, including concurrent pointer edits and reconnect behavior.
 2. Complete touch/tablet and screen-reader testing; automated coverage does not substitute for these sessions.
-3. Build and smoke-test the Docker image. The local Docker Desktop Linux engine was unavailable, so the hosted CI
-   container job must provide the reproducible-image result.
-4. Inspect the hosted GitHub Actions run for the new commit; local checks cannot prove hosted Actions execution.
-5. After review/merge, perform the documented manual Render deployment and persistence/restart smoke check. No paid
+3. After review/merge, perform the documented manual Render deployment and persistence/restart smoke check. No paid
    service, secret, repository setting, or live campaign data has been changed by this branch.
 
-Exact next step: push the verified feature commit, inspect hosted CI (including the Docker build), then conduct the
-manual multi-browser accessibility rehearsal before merging and deploying from `main`.
+Exact next step: conduct the manual multi-browser accessibility rehearsal, review and merge the stacked PRs in order,
+then perform the documented manual Render deployment from `main`.
