@@ -383,6 +383,24 @@ class BattlemapStore:
                 annotation_sql += " AND hidden=0"
             tokens = [self._token_doc(row, auth["role"] != "warden") for row in
                       db.execute(token_sql + " ORDER BY id", (scene_id,)).fetchall()]
+            # Character-linked tokens read the canonical character/D&D resource rows;
+            # values are never copied into token counters. Exact HP is DM/owner only.
+            has_dnd_resources = bool(db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='dnd_character'"
+            ).fetchone())
+            for token in tokens:
+                character_id = token.get("character_id")
+                may_see_exact = auth["role"] == "warden" or auth.get("character_id") == character_id
+                if character_id and may_see_exact:
+                    health = db.execute(
+                        ("SELECT c.hp,c.max_hp,COALESCE(d.temp_hp,0) AS temp_hp FROM character c "
+                         "LEFT JOIN dnd_character d ON d.character_id=c.id WHERE c.id=? AND c.campaign_id=?")
+                        if has_dnd_resources else
+                        "SELECT hp,max_hp,0 AS temp_hp FROM character WHERE id=? AND campaign_id=?",
+                        (character_id, auth["campaign_id"]),
+                    ).fetchone()
+                    if health:
+                        token["health"] = dict(health)
             annotations = [self._annotation_doc(row) for row in
                            db.execute(annotation_sql + " ORDER BY id", (scene_id,)).fetchall()]
             preset_sql = "SELECT * FROM map_preset WHERE campaign_id=?"

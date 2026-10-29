@@ -15,6 +15,7 @@ from discord.ext import commands
 
 from functions.companion import CompanionStore
 from functions.battlemap import BattlemapStore
+from functions.dnd import DndError, DndStore
 from functions.web_auth import AuthError, WebAuthStore
 from cogs.battlemap_api import BattlemapApi
 from functions.config import (
@@ -36,6 +37,7 @@ class Companion(commands.Cog):
         self.bot = bot
         self.store = CompanionStore(db_path)
         self.battlemap = BattlemapStore(db_path, asset_root)
+        self.dnd = DndStore(db_path)
         self.web_auth = WebAuthStore(db_path, session_ttl_seconds)
         config = oauth_config or {}
         self.discord_client_id = config.get("client_id", discord_client_id)
@@ -78,6 +80,9 @@ class Companion(commands.Cog):
         app.router.add_static("/assets/", WEB_ROOT / "assets")
         app.router.add_static("/images/", WEB_ROOT / "images")
         app.router.add_get("/api/dashboard", self.get_dashboard)
+        app.router.add_patch("/api/dnd/characters/{character_id}", self.patch_dnd_character)
+        app.router.add_post("/api/dnd/characters/{character_id}/resources", self.post_dnd_resource)
+        app.router.add_post("/api/dnd/characters/{character_id}/rolls", self.post_dnd_roll)
         app.router.add_patch("/api/characters/{character_id}", self.patch_character)
         app.router.add_post("/api/characters/{character_id}/rolls", self.post_character_roll)
         app.router.add_post("/api/characters/{character_id}/damage-rolls", self.post_damage_roll)
@@ -91,6 +96,38 @@ class Companion(commands.Cog):
         app.router.add_delete("/api/items/{item_id}", self.delete_item)
         BattlemapApi(self.battlemap, self.auth).register(app)
         return app
+
+    async def patch_dnd_character(self, request: web.Request) -> web.Response:
+        try:
+            result = self.dnd.update_card(self.auth(request), int(request.match_info["character_id"]), await request.json())
+            return web.json_response(result)
+        except DndError as error:
+            raise self._dnd_http_error(error)
+        except (TypeError, ValueError):
+            raise web.HTTPBadRequest(text="Invalid D&D character update")
+
+    async def post_dnd_resource(self, request: web.Request) -> web.Response:
+        try:
+            result = self.dnd.resource_delta(self.auth(request), int(request.match_info["character_id"]), await request.json())
+            return web.json_response(result)
+        except DndError as error:
+            raise self._dnd_http_error(error)
+        except (TypeError, ValueError):
+            raise web.HTTPBadRequest(text="Invalid D&D resource update")
+
+    async def post_dnd_roll(self, request: web.Request) -> web.Response:
+        try:
+            result = self.dnd.roll(self.auth(request), int(request.match_info["character_id"]), await request.json())
+            return web.json_response(result)
+        except DndError as error:
+            raise self._dnd_http_error(error)
+        except (TypeError, ValueError):
+            raise web.HTTPBadRequest(text="Invalid D&D roll request")
+
+    @staticmethod
+    def _dnd_http_error(error: DndError):
+        return {400: web.HTTPBadRequest, 403: web.HTTPForbidden, 404: web.HTTPNotFound,
+                409: web.HTTPConflict}.get(error.status, web.HTTPBadRequest)(text=str(error))
 
     async def cog_unload(self) -> None:
         if self.runner:
@@ -316,7 +353,12 @@ class Companion(commands.Cog):
             raise web.HTTPBadRequest(text=str(error))
 
     async def get_dashboard(self, request: web.Request) -> web.Response:
-        return web.json_response(self.store.dashboard(self.auth(request)))
+        auth = self.auth(request)
+        dashboard = self.store.dashboard(auth)
+        if auth.get("game_system") == "dnd":
+            dashboard["dnd_characters"] = self.dnd.cards(auth)
+            dashboard["dnd_rolls"] = self.dnd.rolls(auth)
+        return web.json_response(dashboard)
 
     async def patch_character(self, request: web.Request) -> web.Response:
         auth = self.auth(request)

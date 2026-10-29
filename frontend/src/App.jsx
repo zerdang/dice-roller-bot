@@ -5,7 +5,7 @@ import { itemMetrics, sortInventory, swapInventory } from "./inventory.js";
 import { adjustMaxWounds, applyClass, CLASS_DATA } from "./classes.js";
 import { catalogByCategory, catalogForSavedItem, catalogItem, equipmentPayload } from "./equipment.js";
 import { ALL_SKILLS, canSelectSkill, CLASS_SKILLS, SKILL_BY_ID, SKILL_TIERS } from "./skills.js";
-import Battlemap from "./Battlemap.jsx";
+import DndWorkspace from "./DndWorkspace.jsx";
 import { GAME_REGISTRY, preferredGame } from "./gameRegistry.js";
 
 const METRIC_PAIRS = [
@@ -979,7 +979,7 @@ function Workspace({ onLogout }) {
         {phase === "ready" && dashboard && selectedGame !== dashboard.campaign.game_system ? (
           <section className="game-empty"><p className="index">GAME CONTEXT // {selectedGame.toUpperCase()}</p><h2>No authorized {GAME_REGISTRY.find((game) => game.id === selectedGame)?.label} campaign on this link</h2><p>Changing this selector only changes your view. It cannot convert this campaign or grant access to another one.</p><button type="button" onClick={() => selectGame(dashboard.campaign.game_system)}>Return to {dashboard.campaign.game_system === "dnd" ? "D&D" : "Mothership"}</button></section>
         ) : phase === "ready" && dashboard?.campaign.game_system === "dnd" ? (
-          <Battlemap dashboard={dashboard} request={request} reportError={reportError} />
+          <DndWorkspace dashboard={dashboard} request={request} refresh={refresh} reportError={reportError} />
         ) : phase === "ready" && dashboard ? (
           <main>
             <section className="characters">

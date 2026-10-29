@@ -1,0 +1,15 @@
+{
+  "ruleset_id": "dnd_2024",
+  "visible_label": "D&D 5e — 2024 rules",
+  "source_title": "System Reference Document 5.2.1",
+  "source_version": "5.2.1",
+  "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "legalcode_url": "https://creativecommons.org/licenses/by/4.0/legalcode",
+  "required_attribution_file": "rules/NOTICE.md",
+  "provenance_url": "https://www.dndbeyond.com/srd",
+  "pinned_source_url": "https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf",
+  "retrieved": "2026-10-29",
+  "adaptation_notice": "UI summaries and behavior mappings are adapted for this application; no complete rules text is bundled.",
+  "update_policy": "Pin by version. Review errata and record a changelog before changing campaign behavior."
+}

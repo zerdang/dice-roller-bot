@@ -1,5 +1,5 @@
 export const GAME_REGISTRY = Object.freeze([
-  { id: "dnd", label: "D&D", route: "/dnd", capabilities: ["battlemap"] },
+  { id: "dnd", label: "D&D 5e — 2024 rules", route: "/dnd", capabilities: ["battlemap", "combat-cards", "browser-rolls"] },
   { id: "mothership", label: "Mothership", route: "/mothership", capabilities: ["sheets", "legacy-minimap"] },
 ]);
 
