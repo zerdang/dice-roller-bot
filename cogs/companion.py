@@ -1,6 +1,7 @@
 """Discord commands and web server for the tabletop companion."""
 
 from pathlib import Path
+from typing import Literal
 
 import discord
 from aiohttp import web
@@ -8,6 +9,8 @@ from discord import app_commands
 from discord.ext import commands
 
 from functions.companion import CompanionStore
+from functions.battlemap import BattlemapStore
+from cogs.battlemap_api import BattlemapApi
 from functions.config import companion_db, companion_enabled, companion_host, companion_port, companion_public_url
 
 
@@ -20,12 +23,13 @@ class Companion(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.store = CompanionStore(companion_db)
+        self.battlemap = BattlemapStore(companion_db)
         self.runner: web.AppRunner | None = None
 
     async def cog_load(self) -> None:
         if not companion_enabled:
             return
-        app = web.Application(client_max_size=256 * 1024)
+        app = web.Application(client_max_size=21 * 1024 * 1024)
         app.router.add_get("/", self.index)
         app.router.add_static("/assets/", WEB_ROOT / "assets")
         app.router.add_static("/images/", WEB_ROOT / "images")
@@ -41,6 +45,7 @@ class Companion(commands.Cog):
         app.router.add_patch("/api/characters/{character_id}/items/order", self.patch_item_order)
         app.router.add_patch("/api/items/{item_id}", self.patch_item)
         app.router.add_delete("/api/items/{item_id}", self.delete_item)
+        BattlemapApi(self.battlemap, self.auth).register(app)
         self.runner = web.AppRunner(app)
         await self.runner.setup()
         await web.TCPSite(self.runner, companion_host, companion_port).start()
@@ -208,12 +213,13 @@ class Companion(commands.Cog):
 
     @tabletop.command(name="setup", description="Create or rename your tabletop campaign")
     @app_commands.checks.has_permissions(administrator=True)
-    async def setup_campaign(self, interaction: discord.Interaction, name: str) -> None:
+    async def setup_campaign(self, interaction: discord.Interaction, name: str,
+                             game: Literal["dnd", "mothership"] = "dnd") -> None:
         if not interaction.guild_id:
             await interaction.response.send_message("Campaigns must be created in a server.", ephemeral=True)
             return
         campaign = self.store.create_campaign(
-            str(interaction.guild_id), name[:100], str(interaction.user.id)
+            str(interaction.guild_id), name[:100], str(interaction.user.id), game
         )
         if not campaign:
             await interaction.response.send_message(
@@ -222,20 +228,21 @@ class Companion(commands.Cog):
             )
             return
         await interaction.response.send_message(
-            f"**{name[:100]}** is ready and is now owned by your Discord account.\n\n"
+            f"**{name[:100]}** ({game}) is ready and is now owned by your Discord account.\n\n"
             "Use `/tabletop warden-link` whenever you need a fresh management link.",
             ephemeral=True,
         )
 
     @tabletop.command(name="warden-link", description="Create a fresh private management link")
-    async def warden_link(self, interaction: discord.Interaction) -> None:
+    async def warden_link(self, interaction: discord.Interaction,
+                          game: Literal["dnd", "mothership"] = "mothership") -> None:
         if not interaction.guild_id:
             await interaction.response.send_message(
                 "Warden links must be requested in your game server.", ephemeral=True
             )
             return
         token = self.store.rotate_warden_token(
-            str(interaction.guild_id), str(interaction.user.id)
+            str(interaction.guild_id), str(interaction.user.id), game
         )
         if not token:
             await interaction.response.send_message(
@@ -251,18 +258,19 @@ class Companion(commands.Cog):
         )
 
     @tabletop.command(name="invite", description="Create or refresh a player's private character link")
-    async def invite_player(self, interaction: discord.Interaction, player: discord.Member) -> None:
+    async def invite_player(self, interaction: discord.Interaction, player: discord.Member,
+                            game: Literal["dnd", "mothership"] = "mothership") -> None:
         if not interaction.guild_id:
             await interaction.response.send_message("Player links must be created in a server.", ephemeral=True)
             return
-        if not self.store.is_campaign_owner(str(interaction.guild_id), str(interaction.user.id)):
+        if not self.store.is_campaign_owner(str(interaction.guild_id), str(interaction.user.id), game):
             await interaction.response.send_message(
                 "Access denied. Only the campaign's warden can manage player invitations.",
                 ephemeral=True,
             )
             return
         created = self.store.create_or_rotate_player(
-            str(interaction.guild_id), str(player.id), player.display_name
+            str(interaction.guild_id), str(player.id), player.display_name, game
         )
         if not created:
             await interaction.response.send_message(
@@ -278,12 +286,13 @@ class Companion(commands.Cog):
         )
 
     @tabletop.command(name="link", description="Refresh your own private player link")
-    async def player_link(self, interaction: discord.Interaction) -> None:
+    async def player_link(self, interaction: discord.Interaction,
+                          game: Literal["dnd", "mothership"] = "mothership") -> None:
         if not interaction.guild_id:
             await interaction.response.send_message("Use this command in your game server.", ephemeral=True)
             return
         created = self.store.create_or_rotate_player(
-            str(interaction.guild_id), str(interaction.user.id), interaction.user.display_name
+            str(interaction.guild_id), str(interaction.user.id), interaction.user.display_name, game
         )
         if not created:
             await interaction.response.send_message(

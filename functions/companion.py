@@ -21,12 +21,14 @@ SCHEMA = """
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS campaign (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    guild_id TEXT NOT NULL UNIQUE,
+    guild_id TEXT NOT NULL,
     name TEXT NOT NULL,
+    game_system TEXT NOT NULL DEFAULT 'mothership' CHECK(game_system IN ('dnd', 'mothership')),
     owner_discord_user_id TEXT,
     warden_token_hash TEXT NOT NULL,
     map_visibility_json TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    UNIQUE(guild_id, game_system)
 );
 CREATE TABLE IF NOT EXISTS character (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,6 +136,7 @@ CLASS_SKILLS = {
     "scientist": set(),
 }
 ROLL_MODES = {"normal", "advantage", "disadvantage"}
+GAME_SYSTEMS = {"dnd", "mothership"}
 
 
 class CompanionStore:
@@ -148,10 +151,44 @@ class CompanionStore:
     @staticmethod
     def _migrate_campaign(db: sqlite3.Connection) -> None:
         columns = {row["name"] for row in db.execute("PRAGMA table_info(campaign)")}
+        if "game_system" not in columns:
+            db.execute("ALTER TABLE campaign ADD COLUMN game_system TEXT NOT NULL DEFAULT 'mothership'")
         if "owner_discord_user_id" not in columns:
             db.execute("ALTER TABLE campaign ADD COLUMN owner_discord_user_id TEXT")
         if "map_visibility_json" not in columns:
             db.execute("ALTER TABLE campaign ADD COLUMN map_visibility_json TEXT NOT NULL DEFAULT '{}'")
+        sql = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'campaign'"
+        ).fetchone()[0]
+        if "GUILD_ID TEXT NOT NULL UNIQUE" in sql.upper():
+            # SQLite cannot drop an inline UNIQUE constraint. Rebuild with stable IDs so
+            # existing character/roll/turn foreign keys continue to resolve unchanged.
+            db.commit()
+            db.execute("PRAGMA foreign_keys = OFF")
+            db.executescript("""
+                CREATE TABLE campaign_game_scoped (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    game_system TEXT NOT NULL DEFAULT 'mothership'
+                        CHECK(game_system IN ('dnd', 'mothership')),
+                    owner_discord_user_id TEXT,
+                    warden_token_hash TEXT NOT NULL,
+                    map_visibility_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    UNIQUE(guild_id, game_system)
+                );
+                INSERT INTO campaign_game_scoped(
+                    id, guild_id, name, game_system, owner_discord_user_id,
+                    warden_token_hash, map_visibility_json, created_at
+                )
+                SELECT id, guild_id, name, game_system, owner_discord_user_id,
+                       warden_token_hash, map_visibility_json, created_at
+                FROM campaign;
+                DROP TABLE campaign;
+                ALTER TABLE campaign_game_scoped RENAME TO campaign;
+            """)
+            db.execute("PRAGMA foreign_keys = ON")
 
     @staticmethod
     def _migrate_character(db: sqlite3.Connection) -> None:
@@ -208,12 +245,16 @@ class CompanionStore:
             db.close()
 
     def create_campaign(
-        self, guild_id: str, name: str, owner_discord_user_id: str
+        self, guild_id: str, name: str, owner_discord_user_id: str, game_system: str = "mothership"
     ) -> dict[str, Any] | None:
         """Create a campaign or update one owned by the requesting Discord user."""
+        game_system = str(game_system).lower()
+        if game_system not in GAME_SYSTEMS:
+            raise ValueError("Unsupported game system")
         with self.connect() as db:
             existing = db.execute(
-                "SELECT id, owner_discord_user_id FROM campaign WHERE guild_id = ?", (guild_id,)
+                "SELECT id, owner_discord_user_id FROM campaign WHERE guild_id = ? AND game_system = ?",
+                (guild_id, game_system),
             ).fetchone()
             if existing:
                 if existing["owner_discord_user_id"] not in (None, owner_discord_user_id):
@@ -234,39 +275,39 @@ class CompanionStore:
             else:
                 inaccessible_token = _token()
                 campaign_id = db.execute(
-                    "INSERT INTO campaign(guild_id, name, owner_discord_user_id, warden_token_hash, created_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (guild_id, name, owner_discord_user_id, _hash(inaccessible_token), _now()),
+                    "INSERT INTO campaign(guild_id, name, game_system, owner_discord_user_id, warden_token_hash, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (guild_id, name, game_system, owner_discord_user_id, _hash(inaccessible_token), _now()),
                 ).lastrowid
             row = db.execute("SELECT * FROM campaign WHERE id = ?", (campaign_id,)).fetchone()
         return dict(row)
 
-    def is_campaign_owner(self, guild_id: str, discord_user_id: str) -> bool:
+    def is_campaign_owner(self, guild_id: str, discord_user_id: str, game_system: str = "mothership") -> bool:
         with self.connect() as db:
             row = db.execute(
-                "SELECT 1 FROM campaign WHERE guild_id = ? AND owner_discord_user_id = ?",
-                (guild_id, discord_user_id),
+                "SELECT 1 FROM campaign WHERE guild_id = ? AND game_system = ? AND owner_discord_user_id = ?",
+                (guild_id, game_system, discord_user_id),
             ).fetchone()
         return bool(row)
 
-    def rotate_warden_token(self, guild_id: str, discord_user_id: str) -> str | None:
+    def rotate_warden_token(self, guild_id: str, discord_user_id: str, game_system: str = "mothership") -> str | None:
         """Issue a new bearer credential only to the campaign's Discord owner."""
         token = _token()
         with self.connect() as db:
             changed = db.execute(
                 "UPDATE campaign SET warden_token_hash = ? "
-                "WHERE guild_id = ? AND owner_discord_user_id = ?",
-                (_hash(token), guild_id, discord_user_id),
+                "WHERE guild_id = ? AND game_system = ? AND owner_discord_user_id = ?",
+                (_hash(token), guild_id, game_system, discord_user_id),
             ).rowcount
         return token if changed else None
 
     def create_or_rotate_player(
-        self, guild_id: str, discord_user_id: str, name: str
+        self, guild_id: str, discord_user_id: str, name: str, game_system: str = "mothership"
     ) -> tuple[dict[str, Any], str] | None:
         token = _token()
         with self.connect() as db:
             campaign = db.execute(
-                "SELECT id FROM campaign WHERE guild_id = ?", (guild_id,)
+                "SELECT id FROM campaign WHERE guild_id = ? AND game_system = ?", (guild_id, game_system)
             ).fetchone()
             if not campaign:
                 return None
@@ -296,22 +337,25 @@ class CompanionStore:
                 "SELECT * FROM campaign WHERE warden_token_hash = ?", (token_hash,)
             ).fetchone()
             if campaign:
-                return {"role": "warden", "campaign_id": campaign["id"], "character_id": None}
+                return {"role": "warden", "campaign_id": campaign["id"], "character_id": None,
+                        "game_system": campaign["game_system"]}
             character = db.execute(
-                "SELECT campaign_id, id FROM character WHERE player_token_hash = ?", (token_hash,)
+                "SELECT c.campaign_id, c.id, p.game_system FROM character c "
+                "JOIN campaign p ON p.id = c.campaign_id WHERE c.player_token_hash = ?", (token_hash,)
             ).fetchone()
             if character:
                 return {
                     "role": "player",
                     "campaign_id": character["campaign_id"],
                     "character_id": character["id"],
+                    "game_system": character["game_system"],
                 }
         return None
 
     def dashboard(self, auth: dict[str, Any]) -> dict[str, Any]:
         with self.connect() as db:
             campaign = dict(db.execute(
-                "SELECT id, guild_id, name FROM campaign WHERE id = ?", (auth["campaign_id"],)
+                "SELECT id, guild_id, name, game_system FROM campaign WHERE id = ?", (auth["campaign_id"],)
             ).fetchone())
             if auth["role"] == "warden":
                 rows = db.execute(

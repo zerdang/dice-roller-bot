@@ -1,58 +1,61 @@
-# This is a basic workflow to help you get started with Actions
+name: CI
 
-name: CD
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the main branch
-  push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches: [main, feature/current-development]
+  push:
+    branches: [main, feature/current-development]
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
-jobs:
-  # This workflow contains a single job called "build"
-  deploy:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-latest
+permissions:
+  contents: read
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
-      - name: Kill bot
-        uses: appleboy/ssh-action@v0.1.4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          host: ${{ secrets.DEPLOY_SERVER_HOST }}
-          port: ${{ secrets.DEPLOY_SERVER_PORT }}
-          username: ${{ secrets.DEPLOY_SERVER_USERNAME }}
-          key: ${{ secrets.DEPLOY_SERVER_KEY }}
-          script: systemctl stop dice-roller
-      - name: Clone bot
-        uses: appleboy/ssh-action@v0.1.4
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --requirement requirements.txt
+      - run: python -m unittest discover -s tests -v
+
+  frontend-tests:
+    name: Frontend tests and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          host: ${{ secrets.DEPLOY_SERVER_HOST }}
-          port: ${{ secrets.DEPLOY_SERVER_PORT }}
-          username: ${{ secrets.DEPLOY_SERVER_USERNAME }}
-          key: ${{ secrets.DEPLOY_SERVER_KEY }}
-          script: cd /home/dice-roller/dice-roller-bot && git pull
-      - name: Install requirements
-        uses: appleboy/ssh-action@v0.1.4
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm test
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
         with:
-          host: ${{ secrets.DEPLOY_SERVER_HOST }}
-          port: ${{ secrets.DEPLOY_SERVER_PORT }}
-          username: ${{ secrets.DEPLOY_SERVER_USERNAME }}
-          key: ${{ secrets.DEPLOY_SERVER_KEY }}
-          script: cd /home/dice-roller/dice-roller-bot && pip3 install -r requirements.txt
-      - name: Start bot
-        uses: appleboy/ssh-action@v0.1.4
-        with:
-          host: ${{ secrets.DEPLOY_SERVER_HOST }}
-          port: ${{ secrets.DEPLOY_SERVER_PORT }}
-          username: ${{ secrets.DEPLOY_SERVER_USERNAME }}
-          key: ${{ secrets.DEPLOY_SERVER_KEY }}
-          script: systemctl start dice-roller
+          name: dice-roller-bot-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            bot.py
+            cogs/
+            functions/
+            migrations/
+            models/
+            ui/
+            web/
+            requirements.txt
+            README.md
+            LICENSE

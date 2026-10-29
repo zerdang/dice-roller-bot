@@ -5,6 +5,8 @@ import { itemMetrics, sortInventory, swapInventory } from "./inventory.js";
 import { adjustMaxWounds, applyClass, CLASS_DATA } from "./classes.js";
 import { catalogByCategory, catalogForSavedItem, catalogItem, equipmentPayload } from "./equipment.js";
 import { ALL_SKILLS, canSelectSkill, CLASS_SKILLS, SKILL_BY_ID, SKILL_TIERS } from "./skills.js";
+import Battlemap from "./Battlemap.jsx";
+import { GAME_REGISTRY, preferredGame } from "./gameRegistry.js";
 
 const METRIC_PAIRS = [
   ["Strength", "Sanity"], ["Speed", "Fear"], ["Intellect", "Body"], ["Combat", "Armor"],
@@ -878,6 +880,8 @@ export default function App() {
   const token = useMemo(readAccessToken, []);
   const clock = useUtcClock();
   const [dashboard, setDashboard] = useState(null);
+  const [selectedGame, setSelectedGame] = useState(preferredGame);
+  const explicitGameApplied = useRef(false);
   const [phase, setPhase] = useState(token ? "loading" : "locked");
   const [message, setMessage] = useState("");
   const [theme, setTheme] = useState(() => {
@@ -900,15 +904,17 @@ export default function App() {
   }, [crtStrength]);
 
   const request = useCallback(async (path, options = {}) => {
+    const { raw = false, ...fetchOptions } = options;
     const response = await fetch(path, {
-      ...options,
+      ...fetchOptions,
       headers: {
         Authorization: `Bearer ${token}`,
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
         ...(options.headers || {}),
       },
     });
     if (!response.ok) throw new ApiError(response.status, await response.text());
+    if (raw) return response;
     return response.status === 204 ? null : response.json();
   }, [token]);
 
@@ -917,6 +923,10 @@ export default function App() {
       const data = await request("/api/dashboard");
       const formFieldActive = document.activeElement?.matches("input, textarea, select");
       if (force || !formFieldActive) setDashboard(data);
+      if (!explicitGameApplied.current) {
+        setSelectedGame(data.campaign.game_system);
+        explicitGameApplied.current = true;
+      }
       setPhase("ready");
       setMessage("");
     } catch (error) {
@@ -957,20 +967,28 @@ export default function App() {
     }
   };
   const roleLabel = dashboard ? `${dashboard.role} view` : phase === "loading" ? "Establishing uplink" : "Link offline";
+  const selectGame = (game) => {
+    setSelectedGame(game);
+    localStorage.setItem("tabletop-game", game);
+  };
 
   return (
     <>
       <div className="crt-overlay" aria-hidden="true" />
       <div className={`shell${dashboard?.role ? ` ${dashboard.role}-shell` : ""}`}>
         <div className="system-bar">
-          <span>{dashboard ? `${dashboard.campaign.name} // ${roleLabel}` : "SHIPNET // LOCAL RELAY"}</span>
+          <span>{dashboard ? `${dashboard.campaign.name} // ${dashboard.campaign.game_system.toUpperCase()} // ${roleLabel}` : "TABLETOP // LOCAL RELAY"}</span>
           <span>{clock}</span>
-          <span className="system-link">LINK: <b>{phase === "ready" ? "ENCRYPTED" : "PENDING"}</b>{theme === "crt" && <label className="crt-strength"><span>CRT</span><input type="range" min="0" max="100" value={crtStrength} aria-label="CRT effect strength" onChange={(event) => setCrtStrength(Number(event.target.value))} /><b>{crtStrength}%</b></label>}<label className="theme-picker"><span>DISPLAY</span><select value={theme} aria-label="Display theme" onChange={(event) => setTheme(event.target.value)}><option value="crt">CRT</option><option value="simple">SIMPLE</option><option value="fantasy">FANTASY</option></select></label>{token && <button className="credential-clear" type="button" onClick={clearCredential}>Exit</button>}</span>
+          <span className="system-link">LINK: <b>{phase === "ready" ? "ENCRYPTED" : "PENDING"}</b><label className="game-picker"><span>GAME</span><select value={selectedGame} aria-label="Game" onChange={(event) => selectGame(event.target.value)}>{GAME_REGISTRY.map((game) => <option value={game.id} key={game.id}>{game.label}</option>)}</select></label>{theme === "crt" && <label className="crt-strength"><span>CRT</span><input type="range" min="0" max="100" value={crtStrength} aria-label="CRT effect strength" onChange={(event) => setCrtStrength(Number(event.target.value))} /><b>{crtStrength}%</b></label>}<label className="theme-picker"><span>DISPLAY</span><select value={theme} aria-label="Display theme" onChange={(event) => setTheme(event.target.value)}><option value="crt">CRT</option><option value="simple">SIMPLE</option><option value="fantasy">FANTASY</option></select></label>{token && <button className="credential-clear" type="button" onClick={clearCredential}>Exit</button>}</span>
         </div>
 
         {message && phase === "ready" && <div className="flash" role="status">SYS/WARN // {message}</div>}
 
-        {phase === "ready" && dashboard ? (
+        {phase === "ready" && dashboard && selectedGame !== dashboard.campaign.game_system ? (
+          <section className="game-empty"><p className="index">GAME CONTEXT // {selectedGame.toUpperCase()}</p><h2>No authorized {GAME_REGISTRY.find((game) => game.id === selectedGame)?.label} campaign on this link</h2><p>Changing this selector only changes your view. It cannot convert this campaign or grant access to another one.</p><button type="button" onClick={() => selectGame(dashboard.campaign.game_system)}>Return to {dashboard.campaign.game_system === "dnd" ? "D&D" : "Mothership"}</button></section>
+        ) : phase === "ready" && dashboard?.campaign.game_system === "dnd" ? (
+          <Battlemap dashboard={dashboard} request={request} reportError={reportError} />
+        ) : phase === "ready" && dashboard ? (
           <main>
             <section className="characters">
               {dashboard.role === "warden" ? <WardenWorkspace dashboard={dashboard} request={request} refresh={refresh} reportError={reportError} toggleMapRegion={toggleMapRegion} /> : <>

@@ -80,6 +80,62 @@ Use help command or tag bot to list all available commands.
 ## Tabletop companion
 
 The tabletop companion is a responsive React interface served by the Python bot.
+
+### Game contexts
+
+The shell has a Game selector independent of the visual theme. New `/tabletop setup`
+campaigns default to `dnd`; pass `game:mothership` to create or rename a Mothership
+campaign. Existing campaigns are migrated to Mothership and their existing bearer
+links continue to open the complete original sheets, inventory, rolls, turn order,
+and minimap. The same Discord server may have one campaign for each game.
+
+For compatibility, link commands without a `game` argument still target Mothership.
+Use `game:dnd` with `/tabletop warden-link`, `/tabletop invite`, or `/tabletop link`
+for a D&D campaign. Switching the browser selector never converts a campaign or
+grants access to another game.
+
+### D&D battlemap
+
+The D&D workspace provides persistent scenes, square-grid calibration, local
+pan/zoom, optional snapping, player-owned tokens, counters, tags, markers, and
+circle/cone/line/rectangle aids. Rulers use Euclidean straight-line distance and
+the scene's units-per-square. Hold Alt while dropping a token to bypass snapping.
+Escape cancels the current interaction; arrow keys move a selected permitted token
+by one square, or one map pixel while Shift is held.
+
+The DM creates a scene, optionally uploads a PNG/JPEG/WebP map, configures its grid,
+places and assigns tokens, then activates it. Players can read only the active
+scene, cannot receive hidden objects/private counters, and can move only assigned,
+unlocked tokens. Dragging is local and writes once on drop; clients poll the
+authoritative snapshot every 750 ms and stale same-object writes are rejected.
+
+Uploads are limited to 20 MiB, 12,000 pixels on either axis, and 80 megapixels.
+They are stored under `databases/companion-assets/<campaign-id>/` by opaque ID.
+The database and this asset directory are one backup unit. Stop the bot, copy
+`databases/companion.db` (and any `-wal`/`-shm` files if present) plus
+`databases/companion-assets/`, then restart. Restore both together while stopped.
+Deleting or resetting the database does not implicitly erase uploaded media.
+
+### GitHub Flow and delivery
+
+Development uses short-lived branches and pull requests targeting `main`. During
+the companion bootstrap, PR #1 must first bring `feature/current-development` to
+`main`; the stacked battlemap PR can then be retargeted to `main`. Do not force-push
+or merge the branches out of order.
+
+The `CI` workflow exposes two required checks: **Backend tests** and **Frontend
+tests and build**. It uses disposable test databases, never starts the bot or a
+tunnel, and uploads a 14-day `dice-roller-bot-<commit SHA>` artifact without config,
+tokens, databases, campaign assets, or dependency caches. Recommended `main`
+protection requires both checks and disallows force pushes; repository protection
+must be configured manually by an administrator.
+
+There is no automated deployment target. To deploy locally, download the artifact,
+stop the bot, back up the database and assets as above, unpack over a fresh copy,
+install `requirements.txt`, verify the config remains local, start the bot, and
+smoke-check `/api/dashboard` with a private link. Roll back by stopping the bot,
+restoring the previous artifact and paired data backup, and restarting. Never put
+the local `config` file or bearer links into an artifact.
 It shares Discord dice rolls while keeping campaign sheets and inventory in a
 local SQLite database. The interface includes retro CRT, low-glare Simple, and
 medieval-fantasy display themes, and provides different player and warden views.
