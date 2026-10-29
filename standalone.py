@@ -18,5 +18,7 @@ if __name__ == "__main__":
         create_app(),
         host=os.environ.get("HOST", "0.0.0.0"),
         port=int(os.environ.get("PORT", "8080")),
-        access_log_format='%a "%r" %s %Tf',
+        # The OAuth callback carries a short-lived code in its query string.
+        # aiohttp's request-line access log would persist it in provider logs.
+        access_log=None,
     )

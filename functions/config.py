@@ -60,6 +60,16 @@ companion_enabled = boolean("companion", "enable")
 companion_host = os.environ.get("HOST", value("companion", "host", "127.0.0.1"))
 companion_port = int(os.environ.get("PORT", value("companion", "port", "8080")))
 companion_public_url = os.environ.get("COMPANION_PUBLIC_URL", value("companion", "public_url", f"http://localhost:{companion_port}"))
+discord_client_id = os.environ.get("DISCORD_CLIENT_ID", "")
+discord_client_secret = os.environ.get("DISCORD_CLIENT_SECRET", "")
+discord_redirect_uri = os.environ.get(
+    "DISCORD_REDIRECT_URI", f"{companion_public_url.rstrip('/')}/auth/discord/callback"
+)
+session_ttl_seconds = int(os.environ.get("SESSION_TTL_SECONDS", str(7 * 24 * 60 * 60)))
+session_cookie_secure = boolean(
+    "session", "cookie_secure", not companion_public_url.startswith(("http://localhost", "http://127.0.0.1"))
+)
+allow_legacy_bearer = boolean("companion", "allow_legacy_bearer", False)
 
 # directories
 dir_feedback = value("dir", "feedback", "feedback")

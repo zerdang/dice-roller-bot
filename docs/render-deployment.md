@@ -6,8 +6,7 @@ Node, npm caches, source campaign data, or repository secrets.
 
 ## Render form values
 
-Do not deploy the current `main` branch until PR #1 and the stacked battlemap PR have been reviewed into `main`.
-For the existing form, use:
+Deploy only after the Discord OAuth feature PR has been reviewed into `main`. For the existing form, use:
 
 | Setting | Value |
 | --- | --- |
@@ -29,7 +28,15 @@ Set these non-secret environment variables:
 ```text
 COMPANION_DB=/var/data/companion.db
 COMPANION_ASSETS=/var/data/companion-assets
+COMPANION_PUBLIC_URL=https://dm-screen.onrender.com
+DISCORD_REDIRECT_URI=https://dm-screen.onrender.com/auth/discord/callback
+SESSION_TTL_SECONDS=604800
+COMPANION_ALLOW_LEGACY_BEARER=false
 ```
+
+Also set `DISCORD_CLIENT_ID` and secret `DISCORD_CLIENT_SECRET` from the Discord
+Developer Portal. See [discord-oauth.md](discord-oauth.md) for the portal and
+cutover procedure.
 
 Render injects `PORT`; do not set a fixed production port. After the first successful deployment, set
 `COMPANION_PUBLIC_URL` to the service's exact `https://...onrender.com` origin if Discord-generated links will point
@@ -46,14 +53,15 @@ clients, not the service, decode images. Monitor Render memory/CPU and move to 1
 
 ## Public and protected routes
 
-`/`, compiled `/assets/*`, fixed `/images/*`, `/api/games`, and `/healthz` are public and contain no campaign state.
-`/api/dashboard` and every `/api/battlemap/*` route require the existing bearer credential. Asset downloads recheck
-campaign, active-scene, hidden-token, and role rules server-side. Render HTTPS does not replace authentication.
+`/`, `/invite/*`, compiled `/assets/*`, fixed `/images/*`, `/api/games`, `/api/auth/begin`, the OAuth callback, and
+`/healthz` are public and contain no campaign state. `/api/auth/me`, campaign/invitation management,
+`/api/dashboard`, and every `/api/battlemap/*` route require an expiring server-side session. Every mutation also
+requires CSRF validation. Asset downloads recheck campaign, active-scene, hidden-token, and role rules server-side.
+Render HTTPS does not replace authentication.
 
-Bearer links remain capability credentials stored in the URL fragment and browser local storage. They can be rotated,
-but currently have no expiry, account recovery, device list, or second factor. Do not paste them into logs or support
-messages. The next security milestone is Discord OAuth (or verified email login) with a server-side session, explicit
-campaign membership, role mapping, expiry/revocation, and CSRF protection. That identity rewrite is not claimed here.
+Legacy bearer links are rejected when `COMPANION_ALLOW_LEGACY_BEARER=false`, the required production setting. A
+temporary `true` value exists only for an explicit migration window; see the cutover policy in
+[discord-oauth.md](discord-oauth.md).
 
 ## Existing-data migration and backup
 
@@ -72,11 +80,12 @@ one service instance. Test migrations first against a copy locally.
 
 For rollback: turn off auto-deploy, stop/maintenance the service, retain a backup of the current disk state, restore
 the paired database and asset backup, deploy the previously known-good commit/image, and check `/healthz` plus one
-Warden and one player link. Database migrations are forward-only, so application rollback without its paired data
+DM and one player login. Database migrations are forward-only, so application rollback without its paired data
 backup is not guaranteed. Render disk snapshots are useful additional protection but do not replace export testing.
 
 ## Smoke check
 
-After a manual deploy, confirm `/healthz` returns only `{"status":"ok"}`. Then use private D&D Warden/player links to
-check scene load, authorized portrait/map assets, a token move, reconnect, and persistence across one manual restart.
-Finally open a legacy Mothership link and verify sheets, inventory, rolls, turn order, and minimap.
+After a manual deploy, confirm `/healthz` returns only `{"status":"ok"}`. Sign in with a DM account, verify its
+campaign list, create and revoke an invitation, and accept a fresh invitation with a separate player account. Check
+D&D scene load, authorized portrait/map assets, a token move, logout, reconnect, and persistence across one manual
+restart. Finally select an existing Mothership campaign and verify sheets, inventory, rolls, turn order, and minimap.
