@@ -28,6 +28,19 @@ function TokenVisual({ token, size, request }) {
   return url ? <image href={url} x={-size / 2} y={-size / 2} width={size} height={size} preserveAspectRatio="xMidYMid slice" clipPath="circle(50%)" /> : <circle r={size / 2} fill={token.color} />;
 }
 
+function AssetThumbnail({ assetId, request, alt = "" }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let objectUrl = "";
+    if (!assetId) { setUrl(""); return undefined; }
+    request(`/api/battlemap/assets/${assetId}`, { raw: true }).then((response) => response.blob()).then((blob) => {
+      objectUrl = URL.createObjectURL(blob); setUrl(objectUrl);
+    }).catch(() => setUrl(""));
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [assetId, request]);
+  return url ? <img src={url} alt={alt} /> : <span className="asset-placeholder" aria-hidden="true">◇</span>;
+}
+
 export default function Battlemap({ dashboard, request, reportError }) {
   const [scenes, setScenes] = useState([]);
   const [sceneId, setSceneId] = useState(null);
@@ -42,6 +55,14 @@ export default function Battlemap({ dashboard, request, reportError }) {
   const [ping, setPing] = useState(null);
   const [sharedPings, setSharedPings] = useState([]);
   const [mapUrl, setMapUrl] = useState("");
+  const [folders, setFolders] = useState([]);
+  const [templates, setTemplates] = useState([]);
+  const [sceneBrowserOpen, setSceneBrowserOpen] = useState(false);
+  const [templateBrowserOpen, setTemplateBrowserOpen] = useState(false);
+  const [sceneSearch, setSceneSearch] = useState("");
+  const [sceneFolder, setSceneFolder] = useState("all");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [pendingCharacter, setPendingCharacter] = useState(null);
   const svgRef = useRef(null);
   const workspaceRef = useRef(null);
   const isWarden = dashboard.role === "warden";
@@ -52,6 +73,14 @@ export default function Battlemap({ dashboard, request, reportError }) {
     setScenes(list);
     setSceneId((current) => current && list.some((item) => item.id === current) ? current : list.find((item) => item.is_active)?.id || list[0]?.id || null);
   }, [request]);
+
+  const loadPreparation = useCallback(async () => {
+    if (!isWarden) return;
+    const [nextFolders, nextTemplates] = await Promise.all([
+      request("/api/battlemap/scene-folders"), request("/api/battlemap/creature-templates"),
+    ]);
+    setFolders(nextFolders); setTemplates(nextTemplates);
+  }, [isWarden, request]);
 
   const refresh = useCallback(async () => {
     try {
@@ -66,6 +95,7 @@ export default function Battlemap({ dashboard, request, reportError }) {
   }, [interaction, reportError, request, sceneId]);
 
   useEffect(() => { loadScenes().catch(reportError); }, [loadScenes, reportError]);
+  useEffect(() => { loadPreparation().catch(reportError); }, [loadPreparation, reportError]);
   useEffect(() => {
     refresh();
     const timer = window.setInterval(refresh, 750);
@@ -107,6 +137,16 @@ export default function Battlemap({ dashboard, request, reportError }) {
     if (!name) return;
     mutate(async () => { const created = await request("/api/battlemap/scenes", { method: "POST", body: JSON.stringify(operation({ name })) }); await loadScenes(); setSceneId(created.id); });
   };
+
+  const createFolder = () => {
+    const name = window.prompt("Folder name");
+    if (!name) return;
+    mutate(async () => { await request("/api/battlemap/scene-folders", { method: "POST", body: JSON.stringify({ name }) }); await loadPreparation(); });
+  };
+  const toggleFavorite = (scene) => mutate(async () => {
+    await request(`/api/battlemap/scenes/${scene.id}/favorite`, { method: "PUT", body: JSON.stringify({ favorite: !scene.favorite }) });
+    await loadScenes();
+  });
 
   const updateScene = (patch) => mutate(async () => {
     const updated = await request(`/api/battlemap/scenes/${state.scene.id}`, { method: "PATCH", body: JSON.stringify(operation({ revision: state.scene.revision, ...patch })) });
@@ -152,6 +192,46 @@ export default function Battlemap({ dashboard, request, reportError }) {
     ? { counters: [...(selected.counters || []), { ...preset.payload, key: crypto.randomUUID() }] }
     : { tags: [...(selected.tags || []), { ...preset.payload, key: crypto.randomUUID() }] });
 
+  const saveCreatureTemplate = () => {
+    const name = window.prompt("Creature template name", selected?.name || "Creature");
+    if (!name) return;
+    const armorClass = window.prompt("Armor Class (optional)", "");
+    const hitPoints = window.prompt("Hit points (optional)", "");
+    const details = window.prompt("Private creature/stat-block notes (optional)", "") || "";
+    mutate(async () => {
+      await request("/api/battlemap/creature-templates", { method: "POST", body: JSON.stringify(operation({
+        name, portrait_asset_id: selected?.portrait_asset_id || null, size: selected?.size || 1,
+        color: selected?.color || "#4fc3a1", default_counters: selected?.counters || [],
+        default_tags: selected?.tags || [], armor_class: armorClass || null, hit_points: hitPoints || null, details,
+      })) });
+      await loadPreparation(); setTemplateBrowserOpen(true);
+    });
+  };
+  const editCreatureTemplate = (template) => {
+    const name = window.prompt("Template name", template.name);
+    if (!name) return;
+    const size = window.prompt("Size in grid squares", String(template.size));
+    if (size === null) return;
+    const armorClass = window.prompt("Armor Class (optional)", template.armor_class ?? "");
+    if (armorClass === null) return;
+    const hitPoints = window.prompt("Hit points (optional)", template.hit_points ?? "");
+    if (hitPoints === null) return;
+    const details = window.prompt("Private creature/stat-block notes", template.details || "");
+    if (details === null) return;
+    mutate(async () => {
+      await request(`/api/battlemap/creature-templates/${template.id}`, { method: "PATCH", body: JSON.stringify(operation({ revision: template.revision, name, size, armor_class: armorClass || null, hit_points: hitPoints || null, details })) });
+      await loadPreparation();
+    });
+  };
+  const deleteCreatureTemplate = (template) => window.confirm(`Delete ${template.name}? Existing map tokens will not change.`) && mutate(async () => {
+    await request(`/api/battlemap/creature-templates/${template.id}`, { method: "DELETE" }); await loadPreparation();
+  });
+  const placeCreatureTemplate = (templateId, at = null) => {
+    if (!state.scene) return;
+    const position = at || { x: state.scene.width / 2, y: state.scene.height / 2 };
+    mutate(() => request(`/api/battlemap/creature-templates/${templateId}/place`, { method: "POST", body: JSON.stringify(operation({ scene_id: state.scene.id, ...position })) }));
+  };
+
   const createAt = async (kind, at) => {
     if (!state.scene) return;
     if (kind === "token") {
@@ -174,6 +254,10 @@ export default function Battlemap({ dashboard, request, reportError }) {
       setInteraction({ type: "pan", start: point(event), view }); return;
     }
     const at = worldPoint(event);
+    if (pendingCharacter) {
+      mutate(() => request(`/api/battlemap/scenes/${state.scene.id}/tokens`, { method: "POST", body: JSON.stringify(operation({ name: pendingCharacter.name, character_id: pendingCharacter.id, owners: [pendingCharacter.id], x: at.x, y: at.y })) }));
+      setPendingCharacter(null); return;
+    }
     if (["token", "marker", "circle", "cone", "line", "rectangle"].includes(tool)) {
       mutate(() => createAt(tool, at)); setTool("select"); return;
     }
@@ -239,6 +323,11 @@ export default function Battlemap({ dashboard, request, reportError }) {
     backgroundPosition: `${view.x + state.scene.grid_offset_x * view.zoom}px ${view.y + state.scene.grid_offset_y * view.zoom}px`,
   } : {};
   const rulerDistance = interaction?.type === "ruler" ? euclideanDistance(interaction.start, interaction.end, state.scene) : null;
+  const visibleScenes = scenes.filter((scene) => {
+    const matchesName = scene.name.toLowerCase().includes(sceneSearch.trim().toLowerCase());
+    const matchesFolder = sceneFolder === "all" || (sceneFolder === "unfiled" ? !scene.folder_id : scene.folder_id === Number(sceneFolder));
+    return matchesName && matchesFolder && (!favoritesOnly || scene.favorite);
+  });
 
   useEffect(() => {
     const centerTurn = (event) => {
@@ -252,8 +341,23 @@ export default function Battlemap({ dashboard, request, reportError }) {
   }, [state.tokens]);
 
   useEffect(() => {
+    const centerCharacter = (event) => {
+      const matches = state.tokens.filter((item) => item.character_id === event.detail);
+      if (!matches.length) { reportError(new Error("That character is not on the scene.")); return; }
+      const token = matches[0]; setSelectedId(token.id); setSelectedAnnotationId(null);
+      setView((old) => ({ ...old, x: 320 - token.x * old.zoom, y: 260 - token.y * old.zoom }));
+    };
+    const previewScene = (event) => setSceneId(Number(event.detail));
+    const placeCharacter = (event) => { setPendingCharacter(event.detail); setTool("select"); };
+    window.addEventListener("dnd-center-character", centerCharacter);
+    window.addEventListener("dnd-preview-scene", previewScene);
+    window.addEventListener("dnd-place-character", placeCharacter);
+    return () => { window.removeEventListener("dnd-center-character", centerCharacter); window.removeEventListener("dnd-preview-scene", previewScene); window.removeEventListener("dnd-place-character", placeCharacter); };
+  }, [reportError, state.tokens]);
+
+  useEffect(() => {
     const onKey = (event) => {
-      if (event.key === "Escape") { setInteraction(null); setTool("select"); }
+      if (event.key === "Escape") { setInteraction(null); setPendingCharacter(null); setTool("select"); }
       if (!selected || event.target.matches("input,textarea,select") || !canMove(selected)) return;
       const movement = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
       if (!movement) return;
@@ -271,9 +375,13 @@ export default function Battlemap({ dashboard, request, reportError }) {
       <button type="button" onClick={() => document.fullscreenElement ? document.exitFullscreen() : workspaceRef.current?.requestFullscreen()}>Fullscreen</button>
       {isWarden && <><select aria-label="Scene" value={sceneId || ""} onChange={(event) => setSceneId(Number(event.target.value))}>{scenes.map((scene) => <option value={scene.id} key={scene.id}>{scene.is_active ? "★ " : ""}{scene.name}</option>)}</select><button type="button" onClick={createScene}>New</button>{state.scene && <button type="button" onClick={duplicateScene}>Duplicate</button>}<label className="map-upload">Upload map<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => uploadMap(event.target.files?.[0])} /></label>{state.scene && !state.scene.is_active && <button type="button" onClick={() => updateScene({ activate: true })}>Activate</button>}{state.scene && <button type="button" className="delete-record" onClick={deleteScene}>Delete scene</button>}</>}
     </header>
+    {pendingCharacter && <div className="placement-banner" role="status">Click the map to place {pendingCharacter.name}. Press Escape to cancel.</div>}
+    {isWarden && <nav className="preparation-nav" aria-label="Preparation tools"><button type="button" className="primary-prep" aria-expanded={sceneBrowserOpen} onClick={() => setSceneBrowserOpen((open) => !open)}>Scene browser</button><button type="button" aria-expanded={templateBrowserOpen} onClick={() => setTemplateBrowserOpen((open) => !open)}>Creature library</button></nav>}
+    {isWarden && sceneBrowserOpen && <section className="scene-browser" aria-label="Scene browser"><header><h3>Scene browser</h3><input type="search" placeholder="Search scenes" aria-label="Search scenes" value={sceneSearch} onChange={(event) => setSceneSearch(event.target.value)} /><select aria-label="Filter by folder" value={sceneFolder} onChange={(event) => setSceneFolder(event.target.value)}><option value="all">All folders</option><option value="unfiled">Unfiled</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name} ({folder.scene_count})</option>)}</select><label><input type="checkbox" checked={favoritesOnly} onChange={(event) => setFavoritesOnly(event.target.checked)} /> Favorites</label><button type="button" onClick={createFolder}>New folder</button><button type="button" onClick={createScene}>New scene</button></header><div className="scene-grid">{visibleScenes.map((scene) => <article className={scene.id === sceneId ? "selected" : ""} key={scene.id}><button type="button" className="scene-preview" onClick={() => setSceneId(scene.id)}><AssetThumbnail assetId={scene.asset_id} request={request} alt="" /><strong>{scene.name}</strong><small>{scene.is_active ? "Live for players" : "DM preview"}</small></button><button type="button" className="favorite-button" aria-label={`${scene.favorite ? "Remove" : "Add"} ${scene.name} ${scene.favorite ? "from" : "to"} favorites`} onClick={() => toggleFavorite(scene)}>{scene.favorite ? "★" : "☆"}</button><select aria-label={`Folder for ${scene.name}`} value={scene.folder_id || ""} onChange={(event) => mutate(async () => { await request(`/api/battlemap/scenes/${scene.id}`, { method: "PATCH", body: JSON.stringify(operation({ revision: scene.revision, folder_id: event.target.value ? Number(event.target.value) : null })) }); await loadScenes(); await loadPreparation(); })}><option value="">Unfiled</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></article>)}</div></section>}
+    {isWarden && templateBrowserOpen && <section className="template-browser" aria-label="Creature template library"><header><div><h3>Creature library</h3><p>Templates are copied into independent map tokens. Later edits affect future placements only.</p></div><button type="button" onClick={saveCreatureTemplate}>{selected ? `Save ${selected.name}` : "New template"}</button></header><div className="template-grid">{templates.map((template) => <article draggable="true" onDragStart={(event) => event.dataTransfer.setData("application/x-creature-template", String(template.id))} key={template.id}><AssetThumbnail assetId={template.portrait_asset_id} request={request} alt="" /><div><strong>{template.name}</strong><small>{template.size} square{template.size === 1 ? "" : "s"}{template.armor_class != null ? ` · AC ${template.armor_class}` : ""}{template.hit_points != null ? ` · HP ${template.hit_points}` : ""}</small></div><button type="button" onClick={() => placeCreatureTemplate(template.id)}>Place</button><button type="button" onClick={() => editCreatureTemplate(template)}>Edit</button><button type="button" className="delete-record" aria-label={`Delete ${template.name}`} onClick={() => deleteCreatureTemplate(template)}>×</button></article>)}</div></section>}
     {!state.scene ? <div className="battlemap-empty">{isWarden ? <><p>No scene exists yet.</p><button type="button" onClick={createScene}>Create first scene</button></> : <p>The DM has not activated a scene.</p>}</div> : <div className="battlemap-layout">
       <nav className="map-tools" aria-label="Battlemap tools">{TOOLS.map((name) => <button type="button" className={tool === name ? "active" : ""} aria-pressed={tool === name} disabled={name === "token" && !isWarden} onClick={() => setTool(name)} key={name}>{name}</button>)}<button type="button" onClick={fit}>Fit</button><button type="button" onClick={() => setView({ x: 20, y: 20, zoom: 1 })}>Reset</button></nav>
-      <div className="map-stage" style={grid} onWheel={(event) => { event.preventDefault(); setView((old) => zoomAt(old, point(event), old.zoom * (event.deltaY < 0 ? 1.12 : .89))); }}>
+      <div className="map-stage" style={grid} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-creature-template")) event.preventDefault(); }} onDrop={(event) => { const templateId = Number(event.dataTransfer.getData("application/x-creature-template")); if (templateId) { event.preventDefault(); placeCreatureTemplate(templateId, screenToWorld(point(event), view)); } }} onWheel={(event) => { event.preventDefault(); setView((old) => zoomAt(old, point(event), old.zoom * (event.deltaY < 0 ? 1.12 : .89))); }}>
         <svg ref={svgRef} aria-label={`${state.scene.name} battlemap`} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => setInteraction(null)}>
           <g transform={`translate(${view.x} ${view.y}) scale(${view.zoom})`}>
             {mapUrl ? <image href={mapUrl} width={state.scene.width} height={state.scene.height} preserveAspectRatio="none" /> : <rect className="map-background" width={state.scene.width} height={state.scene.height} />}

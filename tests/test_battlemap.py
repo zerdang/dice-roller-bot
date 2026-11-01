@@ -141,6 +141,16 @@ class BattlemapTests(unittest.TestCase):
         with self.assertRaises(MapError):
             self.maps.create_token(self.warden, self.scene["id"], {"name": "Bad", "owners": [other["id"]]})
 
+    def test_player_can_place_only_their_own_visible_character(self):
+        placed = self.maps.create_token(self.player, self.scene["id"], {
+            "name": "Ada", "character_id": self.first["id"], "owners": [], "hidden": True, "x": 30, "y": 40,
+        })
+        self.assertEqual([self.first["id"]], placed["owners"])
+        self.assertFalse(placed["hidden"])
+        with self.assertRaises(MapError) as denied:
+            self.maps.create_token(self.player, self.scene["id"], {"name": "Bo", "character_id": self.second["id"]})
+        self.assertEqual(403, denied.exception.status)
+
     def test_preset_delete_is_campaign_scoped(self):
         preset = self.maps.upsert_preset(self.warden, {"kind": "tag", "name": "Prone", "payload": {"label": "Prone"}})
         self.maps.delete_preset(self.warden, preset["id"])
@@ -215,6 +225,46 @@ class BattlemapTests(unittest.TestCase):
         duplicate = self.maps.store_asset(self.warden, "portrait.png", png, "upload-once")
         self.assertEqual(first, duplicate)
         self.assertEqual(1, len(list((Path(self.temp.name) / "assets").rglob("*.png"))))
+
+    def test_scene_folders_favorites_and_private_preview(self):
+        folder = self.maps.create_scene_folder(self.warden, {"name": "Dungeon"})
+        private_scene = self.maps.create_scene(self.warden, {"name": "Hidden room"})
+        updated = self.maps.update_scene(self.warden, private_scene["id"], {
+            "revision": private_scene["revision"], "folder_id": folder["id"],
+        })
+        self.maps.set_scene_favorite(self.warden, updated["id"], True)
+        listed = {scene["id"]: scene for scene in self.maps.list_scenes(self.warden)}
+        self.assertEqual(folder["id"], listed[updated["id"]]["folder_id"])
+        self.assertTrue(listed[updated["id"]]["favorite"])
+        self.assertEqual(1, self.maps.list_scene_folders(self.warden)[0]["scene_count"])
+        self.assertEqual([self.scene["id"]], [scene["id"] for scene in self.maps.list_scenes(self.player)])
+        with self.assertRaises(MapError) as denied:
+            self.maps.list_scene_folders(self.player)
+        self.assertEqual(403, denied.exception.status)
+
+    def test_creature_template_placements_are_independent_and_persist(self):
+        template = self.maps.upsert_creature_template(self.warden, {
+            "name": "Owlbear", "size": 2, "color": "#805020", "armor_class": 13,
+            "hit_points": 59, "default_tags": [{"key": "angry", "label": "Angry"}],
+            "details": "Private tactics",
+        })
+        placed = [self.maps.place_creature_template(
+            self.warden, template["id"], self.scene["id"],
+            {"x": 100 + index * 100, "y": 200, "operation_id": f"owlbear-{index}"},
+        ) for index in range(3)]
+        hp = next(counter for counter in placed[0]["counters"] if counter["key"] == "hit-points")
+        injured = self.maps.counter_delta(self.warden, placed[0]["id"], hp["key"], -10, placed[0]["revision"], "injure-one")
+        self.assertEqual(49, next(counter for counter in injured["counters"] if counter["key"] == "hit-points")["value"])
+        state = self.maps.snapshot(self.warden)
+        untouched = [token for token in state["tokens"] if token["id"] in {placed[1]["id"], placed[2]["id"]}]
+        self.assertTrue(all(next(counter for counter in token["counters"] if counter["key"] == "hit-points")["value"] == 59 for token in untouched))
+        self.assertEqual(59, self.maps.list_creature_templates(self.warden)[0]["hit_points"])
+        reopened = BattlemapStore(self.path, Path(self.temp.name) / "assets")
+        fourth = reopened.place_creature_template(self.warden, template["id"], self.scene["id"], {"operation_id": "owlbear-four"})
+        self.assertEqual(59, next(counter for counter in fourth["counters"] if counter["key"] == "hit-points")["value"])
+        with self.assertRaises(MapError) as denied:
+            self.maps.list_creature_templates(self.player)
+        self.assertEqual(403, denied.exception.status)
 
 
 class GameMigrationTests(unittest.TestCase):

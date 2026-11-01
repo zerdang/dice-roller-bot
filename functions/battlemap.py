@@ -75,12 +75,34 @@ CREATE TABLE IF NOT EXISTS map_request (
     actor_key TEXT NOT NULL, operation_id TEXT NOT NULL, response_json TEXT,
     created_at TEXT NOT NULL, PRIMARY KEY(actor_key, operation_id)
 );
+CREATE TABLE IF NOT EXISTS map_scene_folder (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL REFERENCES campaign(id) ON DELETE CASCADE,
+    name TEXT NOT NULL, created_at TEXT NOT NULL,
+    UNIQUE(campaign_id, name)
+);
+CREATE TABLE IF NOT EXISTS map_scene_favorite (
+    scene_id INTEGER NOT NULL REFERENCES map_scene(id) ON DELETE CASCADE,
+    actor_key TEXT NOT NULL, created_at TEXT NOT NULL,
+    PRIMARY KEY(scene_id, actor_key)
+);
+CREATE TABLE IF NOT EXISTS map_creature_template (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL REFERENCES campaign(id) ON DELETE CASCADE,
+    name TEXT NOT NULL, portrait_asset_id TEXT REFERENCES map_asset(id),
+    size REAL NOT NULL DEFAULT 1, color TEXT NOT NULL DEFAULT '#4fc3a1',
+    default_counters_json TEXT NOT NULL DEFAULT '[]', default_tags_json TEXT NOT NULL DEFAULT '[]',
+    armor_class INTEGER, hit_points INTEGER, details TEXT NOT NULL DEFAULT '',
+    revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS map_scene_campaign ON map_scene(campaign_id, id);
+CREATE INDEX IF NOT EXISTS map_scene_folder_campaign ON map_scene_folder(campaign_id, name);
+CREATE INDEX IF NOT EXISTS map_creature_template_campaign ON map_creature_template(campaign_id, name);
 CREATE INDEX IF NOT EXISTS map_token_scene ON map_token(scene_id, id);
 CREATE INDEX IF NOT EXISTS map_annotation_scene ON map_annotation(scene_id, id);
 """
 
-SCENE_FIELDS = {"name", "asset_id", "width", "height", "grid_visible", "grid_size",
+SCENE_FIELDS = {"name", "asset_id", "folder_id", "width", "height", "grid_visible", "grid_size",
                 "grid_offset_x", "grid_offset_y", "units_per_square", "unit_label", "snap_enabled"}
 TOKEN_FIELDS = {"name", "kind", "x", "y", "size", "color", "portrait_asset_id", "character_id",
                 "owners", "locked", "hidden", "counters", "tags", "turn_entry_id"}
@@ -109,6 +131,9 @@ class BattlemapStore:
         self.asset_root.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript(MAP_SCHEMA)
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(map_scene)")}
+            if "folder_id" not in columns:
+                db.execute("ALTER TABLE map_scene ADD COLUMN folder_id INTEGER")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -158,10 +183,11 @@ class BattlemapStore:
         return row
 
     @staticmethod
-    def _scene_doc(row: sqlite3.Row) -> dict[str, Any]:
+    def _scene_doc(row: sqlite3.Row, favorite: bool = False) -> dict[str, Any]:
         data = dict(row)
         for key in ("grid_visible", "snap_enabled", "is_active"):
             data[key] = bool(data[key])
+        data["favorite"] = favorite
         return data
 
     @staticmethod
@@ -191,8 +217,11 @@ class BattlemapStore:
             params: list[Any] = [auth["campaign_id"]]
             if auth["role"] != "warden":
                 sql += " AND is_active = 1"
-            rows = db.execute(sql + " ORDER BY id", params).fetchall()
-        return [self._scene_doc(row) for row in rows]
+            rows = db.execute(sql + " ORDER BY name COLLATE NOCASE, id", params).fetchall()
+            favorites = {row["scene_id"] for row in db.execute(
+                "SELECT scene_id FROM map_scene_favorite WHERE actor_key=?", (self._actor(auth),)
+            ).fetchall()}
+        return [self._scene_doc(row, row["id"] in favorites) for row in rows]
 
     def create_scene(self, auth: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
         self._require_dnd(auth)
@@ -225,8 +254,8 @@ class BattlemapStore:
             if duplicate: return duplicate
             source = self._scene(db, auth, scene_id, True); now = _now()
             new_id = db.execute(
-                "INSERT INTO map_scene(campaign_id,name,asset_id,width,height,grid_visible,grid_size,grid_offset_x,grid_offset_y,units_per_square,unit_label,snap_enabled,is_active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)",
-                (source["campaign_id"], f"{source['name']} copy"[:100], source["asset_id"], source["width"], source["height"], source["grid_visible"], source["grid_size"], source["grid_offset_x"], source["grid_offset_y"], source["units_per_square"], source["unit_label"], source["snap_enabled"], now, now)).lastrowid
+                "INSERT INTO map_scene(campaign_id,name,asset_id,folder_id,width,height,grid_visible,grid_size,grid_offset_x,grid_offset_y,units_per_square,unit_label,snap_enabled,is_active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)",
+                (source["campaign_id"], f"{source['name']} copy"[:100], source["asset_id"], source["folder_id"], source["width"], source["height"], source["grid_visible"], source["grid_size"], source["grid_offset_x"], source["grid_offset_y"], source["units_per_square"], source["unit_label"], source["snap_enabled"], now, now)).lastrowid
             db.execute("INSERT INTO map_token(scene_id,name,kind,x,y,size,color,portrait_asset_id,character_id,owners_json,locked,hidden,counters_json,tags_json,turn_entry_id,created_at,updated_at) SELECT ?,name,kind,x,y,size,color,portrait_asset_id,character_id,owners_json,locked,hidden,counters_json,tags_json,turn_entry_id,?,? FROM map_token WHERE scene_id=?", (new_id, now, now, scene_id))
             db.execute("INSERT INTO map_annotation(scene_id,kind,label,geometry_json,color,opacity,icon,creator_character_id,locked,hidden,created_at,updated_at) SELECT ?,kind,label,geometry_json,color,opacity,icon,creator_character_id,locked,hidden,?,? FROM map_annotation WHERE scene_id=?", (new_id, now, now, scene_id))
             row = db.execute("SELECT * FROM map_scene WHERE id=?", (new_id,)).fetchone()
@@ -266,6 +295,11 @@ class BattlemapStore:
                     (clean["asset_id"], auth["campaign_id"]),
                 ).fetchone():
                     raise MapError("Map asset not found", 404)
+                if clean.get("folder_id") is not None and not db.execute(
+                    "SELECT 1 FROM map_scene_folder WHERE id=? AND campaign_id=?",
+                    (clean["folder_id"], auth["campaign_id"]),
+                ).fetchone():
+                    raise MapError("Scene folder not found", 404)
                 if clean:
                     sets = ",".join(f"{key}=?" for key in clean)
                     db.execute(f"UPDATE map_scene SET {sets},revision=revision+1,updated_at=? WHERE id=? AND revision=?",
@@ -364,7 +398,145 @@ class BattlemapStore:
         for key in ("grid_visible", "snap_enabled"):
             if key in clean: clean[key] = int(bool(clean[key]))
         if "unit_label" in clean: clean["unit_label"] = str(clean["unit_label"])[:16]
+        if "folder_id" in clean: clean["folder_id"] = int(clean["folder_id"]) if clean["folder_id"] else None
         return clean
+
+    def list_scene_folders(self, auth: dict[str, Any]) -> list[dict[str, Any]]:
+        self._require_dnd(auth)
+        if auth["role"] != "warden": raise MapError("Only the DM can browse scene folders", 403)
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT f.*,COUNT(s.id) AS scene_count FROM map_scene_folder f "
+                "LEFT JOIN map_scene s ON s.folder_id=f.id AND s.campaign_id=f.campaign_id "
+                "WHERE f.campaign_id=? GROUP BY f.id ORDER BY f.name COLLATE NOCASE",
+                (auth["campaign_id"],),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def create_scene_folder(self, auth: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+        self._require_dnd(auth)
+        if auth["role"] != "warden": raise MapError("Only the DM can manage scene folders", 403)
+        name = str(payload.get("name", "")).strip()[:80]
+        if not name: raise MapError("Folder name is required")
+        with self.connect() as db:
+            try:
+                folder_id = db.execute(
+                    "INSERT INTO map_scene_folder(campaign_id,name,created_at) VALUES(?,?,?)",
+                    (auth["campaign_id"], name, _now()),
+                ).lastrowid
+            except sqlite3.IntegrityError as error:
+                raise MapError("A folder with that name already exists", 409) from error
+            row = db.execute("SELECT * FROM map_scene_folder WHERE id=?", (folder_id,)).fetchone()
+        return {**dict(row), "scene_count": 0}
+
+    def delete_scene_folder(self, auth: dict[str, Any], folder_id: int) -> None:
+        self._require_dnd(auth)
+        if auth["role"] != "warden": raise MapError("Only the DM can manage scene folders", 403)
+        with self.connect() as db:
+            row = db.execute("SELECT id FROM map_scene_folder WHERE id=? AND campaign_id=?", (folder_id, auth["campaign_id"])).fetchone()
+            if not row: raise MapError("Scene folder not found", 404)
+            db.execute("UPDATE map_scene SET folder_id=NULL,revision=revision+1,updated_at=? WHERE campaign_id=? AND folder_id=?", (_now(), auth["campaign_id"], folder_id))
+            db.execute("DELETE FROM map_scene_folder WHERE id=?", (folder_id,))
+
+    def set_scene_favorite(self, auth: dict[str, Any], scene_id: int, favorite: bool) -> dict[str, Any]:
+        self._require_dnd(auth)
+        with self.connect() as db:
+            self._scene(db, auth, scene_id)
+            actor = self._actor(auth)
+            if favorite:
+                db.execute("INSERT OR IGNORE INTO map_scene_favorite(scene_id,actor_key,created_at) VALUES(?,?,?)", (scene_id, actor, _now()))
+            else:
+                db.execute("DELETE FROM map_scene_favorite WHERE scene_id=? AND actor_key=?", (scene_id, actor))
+        return {"scene_id": scene_id, "favorite": bool(favorite)}
+
+    @staticmethod
+    def _template_doc(row: sqlite3.Row) -> dict[str, Any]:
+        data = dict(row)
+        data["default_counters"] = json.loads(data.pop("default_counters_json") or "[]")
+        data["default_tags"] = json.loads(data.pop("default_tags_json") or "[]")
+        return data
+
+    def list_creature_templates(self, auth: dict[str, Any]) -> list[dict[str, Any]]:
+        self._require_dnd(auth)
+        if auth["role"] != "warden": raise MapError("Only the DM can browse creature templates", 403)
+        with self.connect() as db:
+            rows = db.execute("SELECT * FROM map_creature_template WHERE campaign_id=? ORDER BY name COLLATE NOCASE,id", (auth["campaign_id"],)).fetchall()
+        return [self._template_doc(row) for row in rows]
+
+    @staticmethod
+    def _clean_template(payload: dict[str, Any], creating: bool = False) -> dict[str, Any]:
+        allowed = {"name", "portrait_asset_id", "size", "color", "default_counters", "default_tags", "armor_class", "hit_points", "details"}
+        clean = {key: payload[key] for key in allowed if key in payload}
+        if creating:
+            clean = {"name": "Creature", "portrait_asset_id": None, "size": 1, "color": "#4fc3a1", "default_counters": [], "default_tags": [], "armor_class": None, "hit_points": None, "details": "", **clean}
+        if "name" in clean: clean["name"] = str(clean["name"]).strip()[:100]
+        if not clean.get("name", "Creature"): raise MapError("Template name is required")
+        if "size" in clean: clean["size"] = max(.25, min(10, float(clean["size"])))
+        if "color" in clean: clean["color"] = str(clean["color"])[:20]
+        if "details" in clean: clean["details"] = str(clean["details"])[:10000]
+        for key in ("default_counters", "default_tags"):
+            if key in clean and not isinstance(clean[key], list): raise MapError(f"{key} must be a list")
+        for key in ("armor_class", "hit_points"):
+            if key in clean and clean[key] not in (None, ""):
+                clean[key] = max(0, min(9999, int(clean[key])))
+            elif key in clean:
+                clean[key] = None
+        return clean
+
+    def upsert_creature_template(self, auth: dict[str, Any], payload: dict[str, Any], template_id: int | None = None) -> dict[str, Any]:
+        self._require_dnd(auth)
+        if auth["role"] != "warden": raise MapError("Only the DM can manage creature templates", 403)
+        clean = self._clean_template(payload, not template_id)
+        with self.connect() as db:
+            operation_id = str(payload.get("operation_id", ""))[:100] or None
+            duplicate = self._request_result(db, auth, operation_id)
+            if duplicate: return duplicate
+            portrait_id = clean.get("portrait_asset_id")
+            if portrait_id and not db.execute("SELECT 1 FROM map_asset WHERE id=? AND campaign_id=?", (portrait_id, auth["campaign_id"])).fetchone():
+                raise MapError("Template portrait not found", 404)
+            encoded = {("default_counters_json" if key == "default_counters" else "default_tags_json" if key == "default_tags" else key): (_json(value) if key in {"default_counters", "default_tags"} else value) for key, value in clean.items()}
+            now = _now()
+            if template_id:
+                row = db.execute("SELECT * FROM map_creature_template WHERE id=? AND campaign_id=?", (template_id, auth["campaign_id"])).fetchone()
+                if not row: raise MapError("Creature template not found", 404)
+                expected = int(payload.get("revision", -1))
+                if expected != row["revision"]: raise MapError("Creature template changed; refresh and retry", 409)
+                sets = ",".join(f"{key}=?" for key in encoded)
+                db.execute(f"UPDATE map_creature_template SET {sets},revision=revision+1,updated_at=? WHERE id=?", (*encoded.values(), now, template_id))
+            else:
+                columns = ["campaign_id", *encoded.keys(), "created_at", "updated_at"]
+                template_id = db.execute(f"INSERT INTO map_creature_template({','.join(columns)}) VALUES({','.join('?' for _ in columns)})", (auth["campaign_id"], *encoded.values(), now, now)).lastrowid
+            result = self._template_doc(db.execute("SELECT * FROM map_creature_template WHERE id=?", (template_id,)).fetchone())
+            self._save_request(db, auth, operation_id, result)
+        return result
+
+    def delete_creature_template(self, auth: dict[str, Any], template_id: int) -> None:
+        self._require_dnd(auth)
+        if auth["role"] != "warden": raise MapError("Only the DM can manage creature templates", 403)
+        with self.connect() as db:
+            if not db.execute("DELETE FROM map_creature_template WHERE id=? AND campaign_id=?", (template_id, auth["campaign_id"])).rowcount:
+                raise MapError("Creature template not found", 404)
+
+    def place_creature_template(self, auth: dict[str, Any], template_id: int, scene_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        self._require_dnd(auth)
+        if auth["role"] != "warden": raise MapError("Only the DM can place creature templates", 403)
+        operation_id = str(payload.get("operation_id", ""))[:100] or None
+        with self.connect() as db:
+            row = db.execute("SELECT * FROM map_creature_template WHERE id=? AND campaign_id=?", (template_id, auth["campaign_id"])).fetchone()
+            if not row: raise MapError("Creature template not found", 404)
+            template = self._template_doc(row)
+        counters = [dict(item) for item in template["default_counters"]]
+        if template["armor_class"] is not None:
+            counters.append({"key": "armor-class", "label": "AC", "value": template["armor_class"]})
+        if template["hit_points"] is not None:
+            counters.append({"key": "hit-points", "label": "HP", "value": template["hit_points"], "min": 0, "max": template["hit_points"]})
+        return self.create_token(auth, scene_id, {
+            "operation_id": operation_id, "name": template["name"], "kind": "creature",
+            "x": payload.get("x", 100), "y": payload.get("y", 100), "size": template["size"],
+            "color": template["color"], "portrait_asset_id": template["portrait_asset_id"],
+            "counters": counters, "tags": [dict(item) for item in template["default_tags"]],
+            "owners": [], "hidden": bool(payload.get("hidden", False)),
+        })
 
     def snapshot(self, auth: dict[str, Any], scene_id: int | None = None) -> dict[str, Any]:
         self._require_dnd(auth)
@@ -448,8 +620,11 @@ class BattlemapStore:
 
     def create_token(self, auth: dict[str, Any], scene_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         self._require_dnd(auth)
-        if auth["role"] != "warden": raise MapError("Only the DM can create tokens", 403)
         now = _now(); clean = self._clean_token(payload, True)
+        if auth["role"] != "warden":
+            if clean.get("character_id") != auth.get("character_id"):
+                raise MapError("Players can place only their own character", 403)
+            clean.update({"owners": [auth["character_id"]], "locked": False, "hidden": False, "kind": "character"})
         with self.connect() as db:
             operation_id = str(payload.get("operation_id", ""))[:100] or None
             if operation_id:
@@ -459,10 +634,10 @@ class BattlemapStore:
             self._scene(db, auth, scene_id)
             self._validate_token_refs(db, auth, clean)
             token_id = db.execute(
-                "INSERT INTO map_token(scene_id,name,kind,x,y,size,color,character_id,owners_json,locked,hidden,counters_json,tags_json,turn_entry_id,created_at,updated_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO map_token(scene_id,name,kind,x,y,size,color,portrait_asset_id,character_id,owners_json,locked,hidden,counters_json,tags_json,turn_entry_id,created_at,updated_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (scene_id, clean["name"], clean["kind"], clean["x"], clean["y"], clean["size"], clean["color"],
-                 clean.get("character_id"), _json(clean["owners"]), int(clean["locked"]), int(clean["hidden"]),
+                 clean.get("portrait_asset_id"), clean.get("character_id"), _json(clean["owners"]), int(clean["locked"]), int(clean["hidden"]),
                  _json(clean["counters"]), _json(clean["tags"]), clean.get("turn_entry_id"), now, now)).lastrowid
             row = db.execute("SELECT * FROM map_token WHERE id=?", (token_id,)).fetchone()
             self._record(db, auth, scene_id, "token", token_id, "create", None, self._token_doc(row), operation_id)

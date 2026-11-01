@@ -83,6 +83,7 @@ class Companion(commands.Cog):
         app.router.add_patch("/api/dnd/characters/{character_id}", self.patch_dnd_character)
         app.router.add_post("/api/dnd/characters/{character_id}/resources", self.post_dnd_resource)
         app.router.add_post("/api/dnd/characters/{character_id}/rolls", self.post_dnd_roll)
+        app.router.add_post("/api/dnd/characters/{character_id}/sheet-rolls", self.post_dnd_sheet_roll)
         app.router.add_patch("/api/characters/{character_id}", self.patch_character)
         app.router.add_post("/api/characters/{character_id}/rolls", self.post_character_roll)
         app.router.add_post("/api/characters/{character_id}/damage-rolls", self.post_damage_roll)
@@ -123,6 +124,15 @@ class Companion(commands.Cog):
             raise self._dnd_http_error(error)
         except (TypeError, ValueError):
             raise web.HTTPBadRequest(text="Invalid D&D roll request")
+
+    async def post_dnd_sheet_roll(self, request: web.Request) -> web.Response:
+        try:
+            result = self.dnd.roll_sheet_field(self.auth(request), int(request.match_info["character_id"]), await request.json())
+            return web.json_response(result, status=201)
+        except DndError as error:
+            raise self._dnd_http_error(error)
+        except (TypeError, ValueError):
+            raise web.HTTPBadRequest(text="Invalid D&D sheet roll request")
 
     @staticmethod
     def _dnd_http_error(error: DndError):
@@ -357,6 +367,7 @@ class Companion(commands.Cog):
         dashboard = self.store.dashboard(auth)
         if auth.get("game_system") == "dnd":
             dashboard["dnd_characters"] = self.dnd.cards(auth)
+            dashboard["dnd_roster"] = self.dnd.roster(auth)
             dashboard["dnd_rolls"] = self.dnd.rolls(auth)
         return web.json_response(dashboard)
 
