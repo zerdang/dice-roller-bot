@@ -967,7 +967,7 @@ function Workspace({ onLogout }) {
   return (
     <>
       <div className="crt-overlay" aria-hidden="true" />
-      <div className={`shell${dashboard?.role ? ` ${dashboard.role}-shell` : ""}`}>
+      <div className={`shell${dashboard?.role ? ` ${dashboard.role}-shell` : ""}${dashboard?.campaign.game_system === "dnd" ? " dnd-shell" : ""}`}>
         <div className="system-bar">
           <span>{dashboard ? `${dashboard.campaign.name} // ${dashboard.campaign.game_system.toUpperCase()} // ${roleLabel}` : "TABLETOP // LOCAL RELAY"}</span>
           <span>{clock}</span>

@@ -1,8 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { conePath, euclideanDistance, screenToWorld, snapPoint, zoomAt } from "./battlemapGeometry.js";
 
-const TOOLS = ["select", "pan", "token", "marker", "circle", "cone", "line", "rectangle", "ruler", "ping"];
+const TOOLS = ["select", "pan", "token", "marker", "ruler"];
+const SHAPE_TOOLS = ["circle", "cone", "line", "rectangle"];
 const DND_CONDITIONS = ["Blinded", "Charmed", "Deafened", "Frightened", "Grappled", "Incapacitated", "Invisible", "Paralyzed", "Petrified", "Poisoned", "Prone", "Restrained", "Stunned", "Unconscious"];
+
+function ToolIcon({ name }) {
+  const paths = {
+    select: <path d="M6 3l12 11-6 .8 3.5 6-3 1.7-3.4-6-4 4z" />,
+    pan: <path d="M8 11V7a2 2 0 014 0v3-5a2 2 0 014 0v5-3a2 2 0 014 0v4-2a2 2 0 014 0v5c0 5-3 8-8 8-3 0-5-2-7-5l-2-3a2 2 0 013-2z" />,
+    token: <><circle cx="12" cy="9" r="4" /><path d="M5 21c.7-4 3-6 7-6s6.3 2 7 6" /></>,
+    marker: <><path d="M12 22s7-7 7-13a7 7 0 10-14 0c0 6 7 13 7 13z" /><circle cx="12" cy="9" r="2" /></>,
+    ruler: <path d="M4 17L17 4l3 3L7 20zM10 11l3 3m0-6l3 3M7 14l3 3" />,
+    circle: <circle cx="12" cy="12" r="7" />,
+    cone: <path d="M5 19L12 4l7 15z" />,
+    line: <path d="M5 19L19 5" />,
+    rectangle: <rect x="5" y="6" width="14" height="12" rx="1" />,
+    fit: <path d="M9 4H4v5m11-5h5v5M9 20H4v-5m11 5h5v-5" />,
+    reset: <path d="M5 8a8 8 0 111 10m-1 2v-6h6" />,
+    shapes: <><circle cx="9" cy="9" r="4" /><rect x="11" y="11" width="8" height="8" /></>,
+  };
+  return <svg className="tool-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
+}
+
+function ToolButton({ name, label = name, active = false, disabled = false, onClick }) {
+  return <button type="button" className={`map-tool-button${active ? " active" : ""}`} data-label={label} aria-label={label} aria-pressed={active} disabled={disabled} onClick={onClick}><ToolIcon name={name} /></button>;
+}
 
 function annotationShape(item) {
   const g = item.geometry || {};
@@ -63,7 +86,10 @@ export default function Battlemap({ dashboard, request, reportError }) {
   const [sceneFolder, setSceneFolder] = useState("all");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [pendingCharacter, setPendingCharacter] = useState(null);
+  const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const svgRef = useRef(null);
+  const stageRef = useRef(null);
   const workspaceRef = useRef(null);
   const isWarden = dashboard.role === "warden";
   const playerId = dashboard.characters?.[0]?.id;
@@ -109,6 +135,19 @@ export default function Battlemap({ dashboard, request, reportError }) {
       .catch(reportError);
     return () => { if (url) URL.revokeObjectURL(url); };
   }, [reportError, request, state.scene?.asset_id]);
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return undefined;
+    const handleWheel = (event) => {
+      event.preventDefault();
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const cursor = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      setView((old) => zoomAt(old, cursor, old.zoom * (event.deltaY < 0 ? 1.12 : .89)));
+    };
+    stage.addEventListener("wheel", handleWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", handleWheel);
+  }, [state.scene?.id]);
 
   const point = (event) => {
     const rect = svgRef.current.getBoundingClientRect();
@@ -249,10 +288,12 @@ export default function Battlemap({ dashboard, request, reportError }) {
 
   const pointerDown = (event) => {
     if (!state.scene) return;
-    if (tool === "pan" || event.button === 1) {
+    if (tool === "pan" || event.button === 1 || event.button === 2) {
+      event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
       setInteraction({ type: "pan", start: point(event), view }); return;
     }
+    if (event.button !== 0) return;
     const at = worldPoint(event);
     if (pendingCharacter) {
       mutate(() => request(`/api/battlemap/scenes/${state.scene.id}/tokens`, { method: "POST", body: JSON.stringify(operation({ name: pendingCharacter.name, character_id: pendingCharacter.id, owners: [pendingCharacter.id], x: at.x, y: at.y })) }));
@@ -262,15 +303,16 @@ export default function Battlemap({ dashboard, request, reportError }) {
       mutate(() => createAt(tool, at)); setTool("select"); return;
     }
     if (tool === "ruler") { setInteraction({ type: "ruler", start: at, end: at }); return; }
-    if (tool === "ping") {
-      setPing(at); window.setTimeout(() => setPing(null), 3000);
-      mutate(() => request("/api/battlemap/pings", { method: "POST", body: JSON.stringify({ scene_id: state.scene.id, x: at.x, y: at.y }) })); return;
-    }
     setSelectedId(null);
     setSelectedAnnotationId(null);
   };
 
   const tokenDown = (event, token) => {
+    if (event.button === 2) {
+      event.preventDefault(); event.stopPropagation();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setInteraction({ type: "pan", start: point(event), view }); return;
+    }
     event.stopPropagation(); setSelectedId(token.id); setSelectedAnnotationId(null);
     if (tool !== "select" || !canMove(token)) return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -278,6 +320,11 @@ export default function Battlemap({ dashboard, request, reportError }) {
   };
 
   const annotationDown = (event, item) => {
+    if (event.button === 2) {
+      event.preventDefault(); event.stopPropagation();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setInteraction({ type: "pan", start: point(event), view }); return;
+    }
     event.stopPropagation(); setSelectedAnnotationId(item.id); setSelectedId(null);
     if (tool !== "select" || !canEditAnnotation(item)) return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -314,6 +361,14 @@ export default function Battlemap({ dashboard, request, reportError }) {
       mutate(() => request(`/api/battlemap/annotations/${item.id}`, { method: "PATCH", body: JSON.stringify(operation({ revision: interaction.item.revision, geometry: item.geometry })) }));
     }
     setInteraction(null);
+  };
+
+  const sendPing = (event) => {
+    if (!state.scene || event.button !== 0) return;
+    event.preventDefault();
+    const at = worldPoint(event);
+    setPing(at); window.setTimeout(() => setPing(null), 3000);
+    mutate(() => request("/api/battlemap/pings", { method: "POST", body: JSON.stringify({ scene_id: state.scene.id, x: at.x, y: at.y }) }));
   };
 
   const selected = state.tokens.find((item) => item.id === selectedId);
@@ -379,10 +434,10 @@ export default function Battlemap({ dashboard, request, reportError }) {
     {isWarden && <nav className="preparation-nav" aria-label="Preparation tools"><button type="button" className="primary-prep" aria-expanded={sceneBrowserOpen} onClick={() => setSceneBrowserOpen((open) => !open)}>Scene browser</button><button type="button" aria-expanded={templateBrowserOpen} onClick={() => setTemplateBrowserOpen((open) => !open)}>Creature library</button></nav>}
     {isWarden && sceneBrowserOpen && <section className="scene-browser" aria-label="Scene browser"><header><h3>Scene browser</h3><input type="search" placeholder="Search scenes" aria-label="Search scenes" value={sceneSearch} onChange={(event) => setSceneSearch(event.target.value)} /><select aria-label="Filter by folder" value={sceneFolder} onChange={(event) => setSceneFolder(event.target.value)}><option value="all">All folders</option><option value="unfiled">Unfiled</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name} ({folder.scene_count})</option>)}</select><label><input type="checkbox" checked={favoritesOnly} onChange={(event) => setFavoritesOnly(event.target.checked)} /> Favorites</label><button type="button" onClick={createFolder}>New folder</button><button type="button" onClick={createScene}>New scene</button></header><div className="scene-grid">{visibleScenes.map((scene) => <article className={scene.id === sceneId ? "selected" : ""} key={scene.id}><button type="button" className="scene-preview" onClick={() => setSceneId(scene.id)}><AssetThumbnail assetId={scene.asset_id} request={request} alt="" /><strong>{scene.name}</strong><small>{scene.is_active ? "Live for players" : "DM preview"}</small></button><button type="button" className="favorite-button" aria-label={`${scene.favorite ? "Remove" : "Add"} ${scene.name} ${scene.favorite ? "from" : "to"} favorites`} onClick={() => toggleFavorite(scene)}>{scene.favorite ? "★" : "☆"}</button><select aria-label={`Folder for ${scene.name}`} value={scene.folder_id || ""} onChange={(event) => mutate(async () => { await request(`/api/battlemap/scenes/${scene.id}`, { method: "PATCH", body: JSON.stringify(operation({ revision: scene.revision, folder_id: event.target.value ? Number(event.target.value) : null })) }); await loadScenes(); await loadPreparation(); })}><option value="">Unfiled</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></article>)}</div></section>}
     {isWarden && templateBrowserOpen && <section className="template-browser" aria-label="Creature template library"><header><div><h3>Creature library</h3><p>Templates are copied into independent map tokens. Later edits affect future placements only.</p></div><button type="button" onClick={saveCreatureTemplate}>{selected ? `Save ${selected.name}` : "New template"}</button></header><div className="template-grid">{templates.map((template) => <article draggable="true" onDragStart={(event) => event.dataTransfer.setData("application/x-creature-template", String(template.id))} key={template.id}><AssetThumbnail assetId={template.portrait_asset_id} request={request} alt="" /><div><strong>{template.name}</strong><small>{template.size} square{template.size === 1 ? "" : "s"}{template.armor_class != null ? ` · AC ${template.armor_class}` : ""}{template.hit_points != null ? ` · HP ${template.hit_points}` : ""}</small></div><button type="button" onClick={() => placeCreatureTemplate(template.id)}>Place</button><button type="button" onClick={() => editCreatureTemplate(template)}>Edit</button><button type="button" className="delete-record" aria-label={`Delete ${template.name}`} onClick={() => deleteCreatureTemplate(template)}>×</button></article>)}</div></section>}
-    {!state.scene ? <div className="battlemap-empty">{isWarden ? <><p>No scene exists yet.</p><button type="button" onClick={createScene}>Create first scene</button></> : <p>The DM has not activated a scene.</p>}</div> : <div className="battlemap-layout">
-      <nav className="map-tools" aria-label="Battlemap tools">{TOOLS.map((name) => <button type="button" className={tool === name ? "active" : ""} aria-pressed={tool === name} disabled={name === "token" && !isWarden} onClick={() => setTool(name)} key={name}>{name}</button>)}<button type="button" onClick={fit}>Fit</button><button type="button" onClick={() => setView({ x: 20, y: 20, zoom: 1 })}>Reset</button></nav>
-      <div className="map-stage" style={grid} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-creature-template")) event.preventDefault(); }} onDrop={(event) => { const templateId = Number(event.dataTransfer.getData("application/x-creature-template")); if (templateId) { event.preventDefault(); placeCreatureTemplate(templateId, screenToWorld(point(event), view)); } }} onWheel={(event) => { event.preventDefault(); setView((old) => zoomAt(old, point(event), old.zoom * (event.deltaY < 0 ? 1.12 : .89))); }}>
-        <svg ref={svgRef} aria-label={`${state.scene.name} battlemap`} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => setInteraction(null)}>
+    {!state.scene ? <div className="battlemap-empty">{isWarden ? <><p>No scene exists yet.</p><button type="button" onClick={createScene}>Create first scene</button></> : <p>The DM has not activated a scene.</p>}</div> : <div className={`battlemap-layout${inspectorCollapsed ? " inspector-collapsed" : ""}`}>
+      <nav className="map-tools" aria-label="Battlemap tools">{TOOLS.map((name) => <ToolButton name={name} label={name === "pan" ? "Pan (or right-drag)" : name} active={tool === name} disabled={name === "token" && !isWarden} onClick={() => setTool(name)} key={name} />)}<div className={`shape-tool${shapeMenuOpen ? " open" : ""}`}><ToolButton name="shapes" label="Draw shapes" active={SHAPE_TOOLS.includes(tool)} onClick={() => setShapeMenuOpen((open) => !open)} /><div className="shape-tool-menu" aria-label="Shape tools">{SHAPE_TOOLS.map((name) => <ToolButton name={name} active={tool === name} onClick={() => { setTool(name); setShapeMenuOpen(false); }} key={name} />)}</div></div><span className="tool-separator" /><ToolButton name="fit" label="Fit map" onClick={fit} /><ToolButton name="reset" label="Reset view" onClick={() => setView({ x: 20, y: 20, zoom: 1 })} /><p className="map-tool-hint">Double-click to ping</p></nav>
+      <div ref={stageRef} className="map-stage" style={grid} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-creature-template")) event.preventDefault(); }} onDrop={(event) => { const templateId = Number(event.dataTransfer.getData("application/x-creature-template")); if (templateId) { event.preventDefault(); placeCreatureTemplate(templateId, screenToWorld(point(event), view)); } }}>
+        <svg ref={svgRef} aria-label={`${state.scene.name} battlemap`} onContextMenu={(event) => event.preventDefault()} onDoubleClick={sendPing} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => setInteraction(null)}>
           <g transform={`translate(${view.x} ${view.y}) scale(${view.zoom})`}>
             {mapUrl ? <image href={mapUrl} width={state.scene.width} height={state.scene.height} preserveAspectRatio="none" /> : <rect className="map-background" width={state.scene.width} height={state.scene.height} />}
             <g className="map-annotations">{state.annotations.map((item) => <g className={`map-annotation${selectedAnnotationId === item.id ? " selected" : ""}`} role="button" tabIndex="0" key={item.id} aria-label={`${item.kind}: ${item.label}`} onFocus={() => { setSelectedAnnotationId(item.id); setSelectedId(null); }} onPointerDown={(event) => annotationDown(event, item)}>{annotationShape(item)}</g>)}</g>
@@ -392,7 +447,7 @@ export default function Battlemap({ dashboard, request, reportError }) {
           </g>
         </svg>
       </div>
-      <aside className="map-inspector"><div className="inspector-actions"><button type="button" onClick={() => mutate(() => request("/api/battlemap/undo", { method: "POST" }))}>Undo</button>{selected && isWarden && <button type="button" className="delete-record" onClick={() => window.confirm(`Remove ${selected.name}?`) && mutate(async () => { await request(`/api/battlemap/tokens/${selected.id}`, { method: "DELETE", headers: { "X-Operation-ID": crypto.randomUUID() } }); setSelectedId(null); })}>Delete</button>}{selectedAnnotation && canEditAnnotation(selectedAnnotation) && <button type="button" className="delete-record" onClick={() => window.confirm(`Remove ${selectedAnnotation.label}?`) && mutate(async () => { await request(`/api/battlemap/annotations/${selectedAnnotation.id}`, { method: "DELETE", headers: { "X-Operation-ID": crypto.randomUUID() } }); setSelectedAnnotationId(null); })}>Delete</button>}</div><h3>{selected ? selected.name : selectedAnnotation ? selectedAnnotation.label : "Scene controls"}</h3>{selected ? <>
+      <aside className={`map-inspector${inspectorCollapsed ? " collapsed" : ""}`}><button type="button" className="inspector-toggle" aria-label={inspectorCollapsed ? "Expand scene controls" : "Minimize scene controls"} onClick={() => setInspectorCollapsed((collapsed) => !collapsed)}>{inspectorCollapsed ? "‹" : "›"}</button>{!inspectorCollapsed && <div className="inspector-content"><div className="inspector-actions"><button type="button" onClick={() => mutate(() => request("/api/battlemap/undo", { method: "POST" }))}>Undo</button>{selected && isWarden && <button type="button" className="delete-record" onClick={() => window.confirm(`Remove ${selected.name}?`) && mutate(async () => { await request(`/api/battlemap/tokens/${selected.id}`, { method: "DELETE", headers: { "X-Operation-ID": crypto.randomUUID() } }); setSelectedId(null); })}>Delete</button>}{selectedAnnotation && canEditAnnotation(selectedAnnotation) && <button type="button" className="delete-record" onClick={() => window.confirm(`Remove ${selectedAnnotation.label}?`) && mutate(async () => { await request(`/api/battlemap/annotations/${selectedAnnotation.id}`, { method: "DELETE", headers: { "X-Operation-ID": crypto.randomUUID() } }); setSelectedAnnotationId(null); })}>Delete</button>}</div><h3>{selected ? selected.name : selectedAnnotation ? selectedAnnotation.label : "Scene controls"}</h3>{selected ? <>
         <label>X<input type="number" value={Math.round(selected.x)} onChange={(event) => setState((old) => ({ ...old, tokens: old.tokens.map((item) => item.id === selected.id ? { ...item, x: Number(event.target.value) } : item) }))} onBlur={() => updateSelected({ x: selected.x })} /></label>
         <label>Y<input type="number" value={Math.round(selected.y)} onChange={(event) => setState((old) => ({ ...old, tokens: old.tokens.map((item) => item.id === selected.id ? { ...item, y: Number(event.target.value) } : item) }))} onBlur={() => updateSelected({ y: selected.y })} /></label>
         <label>Size (grid squares)<input type="number" min="0.25" max="10" step="0.25" value={selected.size} onChange={(event) => setState((old) => ({ ...old, tokens: old.tokens.map((item) => item.id === selected.id ? { ...item, size: Number(event.target.value) } : item) }))} onBlur={() => updateSelected({ size: selected.size })} /></label>
@@ -403,7 +458,7 @@ export default function Battlemap({ dashboard, request, reportError }) {
         <div className="counter-list">{selected.counters?.map((counter) => <div key={counter.key}><span>{counter.label}</span><button type="button" onClick={() => mutate(() => request(`/api/battlemap/tokens/${selected.id}/counters/${counter.key}/delta`, { method: "POST", body: JSON.stringify({ revision: selected.revision, delta: -1, operation_id: crypto.randomUUID() }) }))}>−</button><b>{counter.value}</b><button type="button" onClick={() => mutate(() => request(`/api/battlemap/tokens/${selected.id}/counters/${counter.key}/delta`, { method: "POST", body: JSON.stringify({ revision: selected.revision, delta: 1, operation_id: crypto.randomUUID() }) }))}>+</button></div>)}</div>
         <div className="token-condition-list">{selected.tags?.map((tag) => <span key={tag.key || tag.label}>{tag.label}<button type="button" aria-label={`Remove ${tag.label}`} onClick={() => updateSelected({ tags: selected.tags.filter((item) => item !== tag) })}>×</button></span>)}</div>
         <button type="button" onClick={() => { const label = window.prompt("Counter label"); if (label) updateSelected({ counters: [...(selected.counters || []), { key: crypto.randomUUID(), label, value: 0 }] }); }}>Add counter</button><button type="button" onClick={() => { const label = window.prompt("Tag label"); if (label) updateSelected({ tags: [...(selected.tags || []), { key: crypto.randomUUID(), label }] }); }}>Add tag</button><section className="preset-list"><h4>Presets</h4>{state.presets.map((preset) => <div key={preset.id}><button type="button" onClick={() => applyPreset(preset)}>Apply {preset.name}</button>{isWarden && <><button type="button" aria-label={`Edit ${preset.name} preset`} onClick={() => editPreset(preset)}>Edit</button><button type="button" aria-label={`Delete ${preset.name} preset`} onClick={() => deletePreset(preset)}>×</button></>}</div>)}{isWarden && <button type="button" onClick={createPreset}>New preset</button>}</section>
-      </> : selectedAnnotation ? <>{["x", "y", ...(selectedAnnotation.kind === "circle" ? ["radius"] : selectedAnnotation.kind === "cone" ? ["radius", "angle", "rotation"] : selectedAnnotation.kind === "line" ? ["x2", "y2"] : selectedAnnotation.kind === "rectangle" ? ["width", "height", "rotation"] : [])].map((key) => <label key={key}>{key}<input type="number" disabled={!canEditAnnotation(selectedAnnotation)} value={Math.round(selectedAnnotation.geometry[key] || 0)} onChange={(event) => setState((old) => ({ ...old, annotations: old.annotations.map((item) => item.id === selectedAnnotation.id ? { ...item, geometry: { ...item.geometry, [key]: Number(event.target.value) } } : item) }))} onBlur={() => updateAnnotation({ geometry: selectedAnnotation.geometry })} /></label>)}<label>Label<input disabled={!canEditAnnotation(selectedAnnotation)} value={selectedAnnotation.label} onChange={(event) => setState((old) => ({ ...old, annotations: old.annotations.map((item) => item.id === selectedAnnotation.id ? { ...item, label: event.target.value } : item) }))} onBlur={() => updateAnnotation({ label: selectedAnnotation.label })} /></label>{isWarden && <><label><input type="checkbox" checked={selectedAnnotation.locked} onChange={(event) => updateAnnotation({ locked: event.target.checked })} /> Locked</label><label><input type="checkbox" checked={selectedAnnotation.hidden} onChange={(event) => updateAnnotation({ hidden: event.target.checked })} /> Hidden</label></>}</> : isWarden ? <><label>Scene name<input value={state.scene.name} onChange={(event) => setState((old) => ({ ...old, scene: { ...old.scene, name: event.target.value } }))} onBlur={() => updateScene({ name: state.scene.name })} /></label>{[["Grid size","grid_size"],["Grid offset X","grid_offset_x"],["Grid offset Y","grid_offset_y"],["Units/square","units_per_square"]].map(([label, key]) => <label key={key}>{label}<input type="number" min={key === "grid_size" ? 5 : undefined} value={state.scene[key]} onChange={(event) => setState((old) => ({ ...old, scene: { ...old.scene, [key]: Number(event.target.value) } }))} onBlur={() => updateScene({ [key]: state.scene[key] })} /></label>)}<label>Unit label<input value={state.scene.unit_label} onChange={(event) => setState((old) => ({ ...old, scene: { ...old.scene, unit_label: event.target.value } }))} onBlur={() => updateScene({ unit_label: state.scene.unit_label })} /></label><label><input type="checkbox" checked={state.scene.grid_visible} onChange={(event) => updateScene({ grid_visible: event.target.checked })} /> Show grid</label><label><input type="checkbox" checked={state.scene.snap_enabled} onChange={(event) => updateScene({ snap_enabled: event.target.checked })} /> Snap to grid</label></> : <p>Select your token or choose a map tool.</p>}</aside>
+      </> : selectedAnnotation ? <>{["x", "y", ...(selectedAnnotation.kind === "circle" ? ["radius"] : selectedAnnotation.kind === "cone" ? ["radius", "angle", "rotation"] : selectedAnnotation.kind === "line" ? ["x2", "y2"] : selectedAnnotation.kind === "rectangle" ? ["width", "height", "rotation"] : [])].map((key) => <label key={key}>{key}<input type="number" disabled={!canEditAnnotation(selectedAnnotation)} value={Math.round(selectedAnnotation.geometry[key] || 0)} onChange={(event) => setState((old) => ({ ...old, annotations: old.annotations.map((item) => item.id === selectedAnnotation.id ? { ...item, geometry: { ...item.geometry, [key]: Number(event.target.value) } } : item) }))} onBlur={() => updateAnnotation({ geometry: selectedAnnotation.geometry })} /></label>)}<label>Label<input disabled={!canEditAnnotation(selectedAnnotation)} value={selectedAnnotation.label} onChange={(event) => setState((old) => ({ ...old, annotations: old.annotations.map((item) => item.id === selectedAnnotation.id ? { ...item, label: event.target.value } : item) }))} onBlur={() => updateAnnotation({ label: selectedAnnotation.label })} /></label>{isWarden && <><label><input type="checkbox" checked={selectedAnnotation.locked} onChange={(event) => updateAnnotation({ locked: event.target.checked })} /> Locked</label><label><input type="checkbox" checked={selectedAnnotation.hidden} onChange={(event) => updateAnnotation({ hidden: event.target.checked })} /> Hidden</label></>}</> : isWarden ? <><label>Scene name<input value={state.scene.name} onChange={(event) => setState((old) => ({ ...old, scene: { ...old.scene, name: event.target.value } }))} onBlur={() => updateScene({ name: state.scene.name })} /></label>{[["Grid size","grid_size"],["Grid offset X","grid_offset_x"],["Grid offset Y","grid_offset_y"],["Units/square","units_per_square"]].map(([label, key]) => <label key={key}>{label}<input type="number" min={key === "grid_size" ? 5 : undefined} value={state.scene[key]} onChange={(event) => setState((old) => ({ ...old, scene: { ...old.scene, [key]: Number(event.target.value) } }))} onBlur={() => updateScene({ [key]: state.scene[key] })} /></label>)}<label>Unit label<input value={state.scene.unit_label} onChange={(event) => setState((old) => ({ ...old, scene: { ...old.scene, unit_label: event.target.value } }))} onBlur={() => updateScene({ unit_label: state.scene.unit_label })} /></label><label><input type="checkbox" checked={state.scene.grid_visible} onChange={(event) => updateScene({ grid_visible: event.target.checked })} /> Show grid</label><label><input type="checkbox" checked={state.scene.snap_enabled} onChange={(event) => updateScene({ snap_enabled: event.target.checked })} /> Snap to grid</label></> : <p>Select your token or choose a map tool.</p>}</div>}</aside>
     </div>}
   </section>;
 }

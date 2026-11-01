@@ -62,6 +62,12 @@
 
 /* D&D table sidebar and full sheet — references img1–img4 */
 .dnd-workspace { --dnd-bg: #15191f; --dnd-panel: #202630; --dnd-raised: #2a323f; --dnd-text: #f1f5f9; --dnd-muted: #aab6c5; --dnd-accent: #55c8bb; color: var(--dnd-text); font-family: Inter, "Segoe UI", sans-serif; text-shadow: none; }
+.dnd-shell { width: 100vw; height: 100vh; min-height: 0; margin: 0; padding: 0; overflow: hidden; border: 0; }
+.dnd-shell::before, .dnd-shell::after { display: none; }
+.dnd-shell > .system-bar { margin: 0; padding-inline: 16px; }
+.dnd-shell .tabletop-shell { height: calc(100vh - 34px); }
+.dnd-workspace aside { clip-path: none; box-shadow: none; }
+.dnd-workspace aside::before { display: none; }
 .tabletop-shell { display: flex; width: 100%; height: calc(100vh - 54px); overflow: hidden; background: var(--dnd-bg); }
 .map-column { position: relative; min-width: 0; flex: 1; }
 .map-column .battlemap-workspace { height: 100%; padding-top: 38px; }
@@ -1373,11 +1379,21 @@ html[data-theme="fantasy"] .info-token:focus { border-color: var(--role-accent, 
 .connection { padding: 5px 8px; border: 1px solid var(--line); font-size: 9px; }
 .connection.online { color: var(--phosphor-hot); }
 .connection.offline { color: var(--danger); }
-.battlemap-layout { display: grid; grid-template-columns: 86px minmax(0, 1fr) 240px; height: calc(100vh - 126px); min-height: 520px; border: 1px solid var(--line-hot); background: var(--black); }
-.map-tools { display: flex; flex-direction: column; gap: 5px; padding: 8px; overflow-y: auto; border-right: 1px solid var(--line); background: var(--panel); }
-.map-tools button { padding: 7px 3px; font-size: 9px; text-transform: uppercase; }
-.map-tools button.active { color: var(--black); background: var(--phosphor-hot); }
-.map-stage { position: relative; overflow: hidden; touch-action: none; user-select: none; background-color: #111; background-image: linear-gradient(to right, #7b8f7b30 1px, transparent 1px), linear-gradient(to bottom, #7b8f7b30 1px, transparent 1px); }
+.battlemap-layout { display: grid; grid-template-columns: 54px minmax(0, 1fr) minmax(240px, 18vw); height: calc(100vh - 126px); min-height: 520px; border: 1px solid var(--line-hot); background: var(--black); }
+.battlemap-layout.inspector-collapsed { grid-template-columns: 54px minmax(0, 1fr) 38px; }
+.map-tools { position: relative; z-index: 8; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 7px 5px; overflow: visible; border-right: 1px solid var(--line); background: var(--panel); }
+.map-tool-button { position: relative; display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; padding: 8px; text-transform: capitalize; }
+.map-tool-button::after { content: attr(data-label); position: absolute; z-index: 12; top: 50%; left: calc(100% + 9px); width: max-content; max-width: 180px; padding: 6px 9px; translate: 0 -50%; border: 1px solid var(--line-hot); border-radius: 4px; background: #111923f2; color: #f5f7fa; box-shadow: 0 5px 18px #0009; font: 12px/1.2 Inter, "Segoe UI", sans-serif; letter-spacing: 0; opacity: 0; pointer-events: none; text-transform: capitalize; transition: opacity .12s ease; }
+.map-tool-button:hover::after, .map-tool-button:focus-visible::after { opacity: 1; }
+.map-tool-button.active { color: var(--black); background: var(--phosphor-hot); }
+.tool-icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.shape-tool { position: relative; }
+.shape-tool-menu { position: absolute; z-index: 10; top: 0; left: calc(100% + 9px); display: none; grid-template-columns: repeat(4, 42px); gap: 4px; padding: 5px; border: 1px solid var(--line-hot); border-radius: 5px; background: var(--panel); box-shadow: 0 8px 24px #000b; }
+.shape-tool.open .shape-tool-menu, .shape-tool:hover .shape-tool-menu, .shape-tool:focus-within .shape-tool-menu { display: grid; }
+.shape-tool-menu .map-tool-button::after { top: calc(100% + 6px); left: 50%; translate: -50% 0; }
+.tool-separator { width: 32px; margin: 2px 0; border-top: 1px solid var(--line); }
+.map-tool-hint { margin: auto 0 0; color: var(--dim); font-size: 8px; line-height: 1.25; text-align: center; }
+.map-stage { position: relative; overflow: hidden; overscroll-behavior: contain; touch-action: none; user-select: none; background-color: #111; background-image: linear-gradient(to right, #7b8f7b30 1px, transparent 1px), linear-gradient(to bottom, #7b8f7b30 1px, transparent 1px); }
 .map-stage svg { display: block; width: 100%; height: 100%; outline: none; }
 .map-background { fill: #202820; stroke: #829082; stroke-width: 2; }
 .map-token { cursor: grab; outline: none; }
@@ -1394,7 +1410,10 @@ html[data-theme="fantasy"] .info-token:focus { border-color: var(--role-accent, 
 .map-ruler text { fill: #fff; stroke: #000; stroke-width: 4px; paint-order: stroke; font: 13px var(--mono); }
 .map-ping { fill: none; stroke: var(--danger); stroke-width: 6; vector-effect: non-scaling-stroke; animation: ping-pulse .7s ease-out infinite; }
 @keyframes ping-pulse { 50% { opacity: .35; } }
-.map-inspector { position: static; max-height: none; padding: 14px; overflow-y: auto; border: 0; border-left: 1px solid var(--line); background: var(--panel); }
+.map-inspector { position: relative; max-height: none; padding: 0; overflow: hidden; border: 0; border-left: 1px solid var(--line); background: var(--panel); }
+.map-inspector.collapsed { background: #11161c; }
+.inspector-toggle { position: absolute; z-index: 2; top: 6px; left: 6px; display: grid; width: 26px; height: 28px; place-items: center; padding: 0; font-size: 20px; line-height: 1; }
+.inspector-content { height: 100%; padding: 42px 14px 14px; overflow-y: auto; scrollbar-gutter: stable; }
 .map-inspector label { display: grid; gap: 4px; margin: 8px 0; font-size: 9px; text-transform: uppercase; }
 .map-inspector input[type="checkbox"] { width: auto; }
 .counter-list > div { display: grid; grid-template-columns: 1fr 28px 32px 28px; align-items: center; gap: 3px; margin: 6px 0; }
@@ -1407,7 +1426,8 @@ html[data-theme="simple"] .map-stage, html[data-theme="fantasy"] .map-stage { te
 @media (max-width: 900px) {
   .scene-browser > header, .template-browser > header { align-items: stretch; flex-direction: column; }
   .template-grid article { grid-template-columns: 45px 1fr auto; }
-  .battlemap-layout { grid-template-columns: 64px minmax(0, 1fr); grid-template-rows: minmax(420px, 1fr) auto; height: auto; }
+  .battlemap-layout, .battlemap-layout.inspector-collapsed { grid-template-columns: 54px minmax(0, 1fr); grid-template-rows: minmax(420px, 1fr) auto; height: auto; }
   .map-stage { min-height: 60vh; }
-  .map-inspector { grid-column: 1 / -1; border-top: 1px solid var(--line); border-left: 0; }
+  .map-inspector { grid-column: 1 / -1; min-height: 46px; border-top: 1px solid var(--line); border-left: 0; }
+  .map-inspector.collapsed { min-height: 40px; }
 }
