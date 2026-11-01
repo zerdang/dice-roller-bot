@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Battlemap from "./Battlemap.jsx";
+import CharacterSheet from "./CharacterSheet.jsx";
+import DndSidebar from "./DndSidebar.jsx";
 
 const ABILITIES = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"];
 const SKILLS = ["Acrobatics", "Animal Handling", "Arcana", "Athletics", "Deception", "History", "Insight", "Intimidation", "Investigation", "Medicine", "Nature", "Perception", "Performance", "Persuasion", "Religion", "Sleight of Hand", "Stealth", "Survival"];
@@ -102,11 +104,17 @@ function CombatCard({ initial, rolls, role, request, refresh, reportError }) {
 }
 
 export default function DndWorkspace({ dashboard, request, refresh, reportError }) {
-  const [tab, setTab] = useState("map");
+  const [sheetId, setSheetId] = useState(() => {
+    const match = window.location.hash.match(/^#sheet=(\d+)$/); return match ? Number(match[1]) : null;
+  });
+  const [audience, setAudience] = useState("public");
+  const sheetLauncher = useRef(null);
+  const cards = dashboard.dnd_characters || [];
+  const openSheet = (id) => { sheetLauncher.current = document.activeElement; setSheetId(id); window.history.replaceState(null, "", `#sheet=${id}`); };
+  const closeSheet = () => { setSheetId(null); window.history.replaceState(null, "", window.location.pathname + window.location.search); window.setTimeout(() => sheetLauncher.current?.focus?.(), 0); };
+  const activeSheet = cards.find((card) => card.id === sheetId);
   return <main className="dnd-workspace">
-    <nav className="dnd-tabs" aria-label="D&D workspace"><button className={tab === "map" ? "active" : ""} onClick={() => setTab("map")}>Map</button><button className={tab === "cards" ? "active" : ""} onClick={() => setTab("cards")}>Combat cards</button><button className={tab === "reference" ? "active" : ""} onClick={() => setTab("reference")}>Reference</button></nav>
-    {tab === "map" && <div className="dnd-map-shell"><Battlemap dashboard={dashboard} request={request} reportError={reportError} /><aside className="dnd-rail"><Tracker entries={dashboard.turn_order} /><DndFeed rolls={dashboard.dnd_rolls || []} /><ReferencePanel /></aside></div>}
-    {tab === "cards" && <section className="dnd-cards">{(dashboard.dnd_characters || []).map((card) => <CombatCard key={card.id} initial={card} rolls={dashboard.dnd_rolls || []} role={dashboard.role} request={request} refresh={refresh} reportError={reportError} />)}</section>}
-    {tab === "reference" && <ReferencePanel />}
+    <div className="tabletop-shell"><section className="map-column"><div className="compact-campaign-label"><b>{dashboard.campaign?.name || "Campaign"}</b><span>D&D 5e — 2024 rules</span></div><Battlemap dashboard={dashboard} request={request} reportError={reportError} /></section><DndSidebar dashboard={dashboard} cards={cards} roster={dashboard.dnd_roster || cards} rolls={dashboard.dnd_rolls || []} audience={audience} setAudience={setAudience} request={request} refresh={refresh} reportError={reportError} onOpenSheet={openSheet} /></div>
+    {activeSheet && <CharacterSheet initial={activeSheet} role={dashboard.role} audience={audience} request={request} refresh={refresh} reportError={reportError} onClose={closeSheet} />}
   </main>;
 }

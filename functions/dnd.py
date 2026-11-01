@@ -28,15 +28,27 @@ CREATE TABLE IF NOT EXISTS dnd_character (
     heroic_inspiration INTEGER NOT NULL DEFAULT 0,
     concentrating INTEGER NOT NULL DEFAULT 0,
     exhaustion INTEGER NOT NULL DEFAULT 0,
+    proficiency_bonus INTEGER NOT NULL DEFAULT 2,
     abilities_json TEXT NOT NULL DEFAULT '{}',
+    ability_scores_json TEXT NOT NULL DEFAULT '{}',
     skills_json TEXT NOT NULL DEFAULT '{}',
+    skill_training_json TEXT NOT NULL DEFAULT '{}',
     saves_json TEXT NOT NULL DEFAULT '{}',
+    save_training_json TEXT NOT NULL DEFAULT '{}',
     attacks_json TEXT NOT NULL DEFAULT '[]',
+    spells_json TEXT NOT NULL DEFAULT '[]',
+    inventory_json TEXT NOT NULL DEFAULT '[]',
     spell_slots_json TEXT NOT NULL DEFAULT '{}',
     resources_json TEXT NOT NULL DEFAULT '[]',
     features_json TEXT NOT NULL DEFAULT '[]',
     action_reminders_json TEXT NOT NULL DEFAULT '{}',
+    identity_json TEXT NOT NULL DEFAULT '{}',
+    senses_json TEXT NOT NULL DEFAULT '{}',
+    training_json TEXT NOT NULL DEFAULT '{}',
+    background_json TEXT NOT NULL DEFAULT '{}',
+    conditions_json TEXT NOT NULL DEFAULT '[]',
     notes TEXT NOT NULL DEFAULT '',
+    dm_notes TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS dnd_roll_event (
@@ -58,6 +70,14 @@ CREATE TABLE IF NOT EXISTS dnd_request (
 """
 
 ABILITIES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
+SKILL_ABILITIES = {
+    "Acrobatics": "dexterity", "Animal Handling": "wisdom", "Arcana": "intelligence",
+    "Athletics": "strength", "Deception": "charisma", "History": "intelligence",
+    "Insight": "wisdom", "Intimidation": "charisma", "Investigation": "intelligence",
+    "Medicine": "wisdom", "Nature": "intelligence", "Perception": "wisdom",
+    "Performance": "charisma", "Persuasion": "charisma", "Religion": "intelligence",
+    "Sleight of Hand": "dexterity", "Stealth": "dexterity", "Survival": "wisdom",
+}
 MODES = {"normal", "advantage", "disadvantage"}
 AUDIENCES = {"public", "private", "dm"}
 ROLL_KINDS = {"ability", "skill", "save", "attack", "damage", "initiative", "custom"}
@@ -80,21 +100,39 @@ class DndError(ValueError):
 
 class DndStore:
     JSON_FIELDS = {
-        "abilities": "abilities_json", "skills": "skills_json", "saves": "saves_json",
-        "attacks": "attacks_json", "spell_slots": "spell_slots_json", "resources": "resources_json",
+        "abilities": "abilities_json", "ability_scores": "ability_scores_json",
+        "skills": "skills_json", "skill_training": "skill_training_json",
+        "saves": "saves_json", "save_training": "save_training_json",
+        "attacks": "attacks_json", "spells": "spells_json", "inventory": "inventory_json",
+        "spell_slots": "spell_slots_json", "resources": "resources_json",
         "features": "features_json", "action_reminders": "action_reminders_json",
+        "identity": "identity_json", "senses": "senses_json", "training": "training_json",
+        "background": "background_json", "conditions": "conditions_json",
     }
     INT_FIELDS = {
         "armor_class": (0, 99), "speed": (0, 999), "initiative_modifier": (-99, 99),
         "spell_save_dc": (0, 99), "spell_attack_modifier": (-99, 99), "temp_hp": (0, 9999),
         "death_successes": (0, 3), "death_failures": (0, 3), "heroic_inspiration": (0, 1),
-        "concentrating": (0, 1), "exhaustion": (0, 6),
+        "concentrating": (0, 1), "exhaustion": (0, 6), "proficiency_bonus": (0, 12),
     }
 
     def __init__(self, path: str):
         self.path = path
         with self.connect() as db:
             db.executescript(DND_SCHEMA)
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(dnd_character)")}
+            additions = {
+                "proficiency_bonus": "INTEGER NOT NULL DEFAULT 2",
+                "ability_scores_json": "TEXT NOT NULL DEFAULT '{}'", "skill_training_json": "TEXT NOT NULL DEFAULT '{}'",
+                "save_training_json": "TEXT NOT NULL DEFAULT '{}'", "spells_json": "TEXT NOT NULL DEFAULT '[]'",
+                "inventory_json": "TEXT NOT NULL DEFAULT '[]'", "identity_json": "TEXT NOT NULL DEFAULT '{}'",
+                "senses_json": "TEXT NOT NULL DEFAULT '{}'", "training_json": "TEXT NOT NULL DEFAULT '{}'",
+                "background_json": "TEXT NOT NULL DEFAULT '{}'", "conditions_json": "TEXT NOT NULL DEFAULT '[]'",
+                "dm_notes": "TEXT NOT NULL DEFAULT ''",
+            }
+            for name, definition in additions.items():
+                if name not in columns:
+                    db.execute(f"ALTER TABLE dnd_character ADD COLUMN {name} {definition}")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -135,20 +173,28 @@ class DndStore:
     def _doc(cls, row: sqlite3.Row, base: sqlite3.Row) -> dict[str, Any]:
         result = dict(row)
         for public, column in cls.JSON_FIELDS.items():
-            result[public] = json.loads(result.pop(column) or ("[]" if public in {"attacks", "resources", "features"} else "{}"))
+            result[public] = json.loads(result.pop(column) or ("[]" if public in {"attacks", "spells", "inventory", "resources", "features", "conditions"} else "{}"))
         result.update({"id": base["id"], "name": base["name"], "hp": base["hp"], "max_hp": base["max_hp"]})
+        if not result.get("ability_scores") and result.get("abilities"):
+            result["ability_scores"] = {ability: max(1, min(30, 10 + 2 * int(modifier))) for ability, modifier in result["abilities"].items()}
+        return result
+
+    @staticmethod
+    def _visible_doc(auth: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+        if auth["role"] != "warden": result.pop("dm_notes", None)
         return result
 
     @staticmethod
     def _clean_json_field(key: str, value: Any) -> Any:
         """Keep user-authored card data flexible but bounded and JSON-safe."""
-        if key in {"abilities", "saves", "skills"}:
+        if key in {"abilities", "ability_scores", "saves", "skills"}:
             if not isinstance(value, dict):
                 raise DndError(f"{key} must be an object")
             result = {}
             for name, modifier in list(value.items())[:100]:
                 try:
-                    result[str(name)[:80]] = max(-99, min(99, int(modifier)))
+                    low, high = (1, 30) if key == "ability_scores" else (-99, 99)
+                    result[str(name)[:80]] = max(low, min(high, int(modifier)))
                 except (TypeError, ValueError) as error:
                     raise DndError(f"{key} modifiers must be integers") from error
             return result
@@ -162,11 +208,22 @@ class DndStore:
                 maximum = max(0, min(99, int(pool.get("max", 0))))
                 result[str(level)[:20]] = {"current": max(0, min(maximum, int(pool.get("current", 0)))), "max": maximum}
             return result
-        if key == "action_reminders":
+        if key in {"action_reminders", "identity", "senses", "training", "background"}:
             if not isinstance(value, dict):
                 raise DndError("action_reminders must be an object")
             return {str(name)[:80]: str(note)[:1000] for name, note in list(value.items())[:20]}
-        if key not in {"attacks", "resources", "features"} or not isinstance(value, list):
+        if key in {"skill_training", "save_training"}:
+            if not isinstance(value, dict): raise DndError(f"{key} must be an object")
+            clean = {}
+            for name, entry in list(value.items())[:100]:
+                if not isinstance(entry, dict): raise DndError(f"{key} entries must be objects")
+                clean[str(name)[:80]] = {
+                    "tier": max(0, min(2, int(entry.get("tier", 0)))),
+                    "adjustment": max(-99, min(99, int(entry.get("adjustment", 0)))),
+                    "override": None if entry.get("override") in (None, "") else max(-99, min(99, int(entry["override"]))),
+                }
+            return clean
+        if key not in {"attacks", "spells", "inventory", "resources", "features", "conditions"} or not isinstance(value, list):
             raise DndError(f"{key} must be a list")
         clean = []
         for item in value[:50]:
@@ -196,7 +253,31 @@ class DndStore:
             result = []
             for base in bases:
                 self._ensure(db, base["id"])
-                result.append(self._doc(db.execute("SELECT * FROM dnd_character WHERE character_id=?", (base["id"],)).fetchone(), base))
+                result.append(self._visible_doc(auth, self._doc(db.execute("SELECT * FROM dnd_character WHERE character_id=?", (base["id"],)).fetchone(), base)))
+        return result
+
+    def roster(self, auth: dict[str, Any]) -> list[dict[str, Any]]:
+        """Campaign party summaries with no inventory, features, spells, or private notes."""
+        self._require_dnd(auth)
+        with self.connect() as db:
+            bases = db.execute("SELECT * FROM character WHERE campaign_id=? ORDER BY name", (auth["campaign_id"],)).fetchall()
+            result = []
+            for base in bases:
+                self._ensure(db, base["id"])
+                full = self._doc(db.execute("SELECT * FROM dnd_character WHERE character_id=?", (base["id"],)).fetchone(), base)
+                scores = full.get("ability_scores", {})
+                passives = {}
+                for skill in ("Perception", "Investigation", "Insight"):
+                    ability = SKILL_ABILITIES[skill]; training = full.get("skill_training", {}).get(skill, {})
+                    value = self._ability_modifier(int(scores.get(ability, 10))) + int(full.get("proficiency_bonus", 2)) * int(training.get("tier", 0)) + int(training.get("adjustment", 0))
+                    passives[skill] = 10 + (value if training.get("override") is None else int(training["override"]))
+                result.append({
+                    "id": base["id"], "name": base["name"], "hp": base["hp"], "max_hp": base["max_hp"],
+                    "armor_class": full["armor_class"], "speed": full["speed"], "identity": full.get("identity", {}),
+                    "conditions": full.get("conditions", []), "exhaustion": full["exhaustion"],
+                    "death_successes": full["death_successes"], "death_failures": full["death_failures"],
+                    "passives": passives, "can_open": auth["role"] == "warden" or auth.get("character_id") == base["id"],
+                })
         return result
 
     def update_card(self, auth: dict[str, Any], character_id: int, payload: dict[str, Any]) -> dict[str, Any]:
@@ -223,6 +304,9 @@ class DndStore:
                     updates.append(f"{column}=?"); values.append(_dump(value))
             if "notes" in payload:
                 updates.append("notes=?"); values.append(str(payload["notes"])[:10000])
+            if "dm_notes" in payload:
+                if auth["role"] != "warden": raise DndError("Only the DM can edit private notes", 403)
+                updates.append("dm_notes=?"); values.append(str(payload["dm_notes"])[:10000])
             hp, max_hp = base["hp"], base["max_hp"]
             if "max_hp" in payload:
                 max_hp = max(1, min(9999, int(payload["max_hp"])))
@@ -239,7 +323,7 @@ class DndStore:
                     raise DndError("Character changed; refresh and retry", 409)
             base = self._character(db, auth, character_id)
             row = db.execute("SELECT * FROM dnd_character WHERE character_id=?", (character_id,)).fetchone()
-        return self._doc(row, base)
+        return self._visible_doc(auth, self._doc(row, base))
 
     def resource_delta(self, auth: dict[str, Any], character_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         """Atomic, bounded, retry-safe changes for HP and common combat resources."""
@@ -273,9 +357,53 @@ class DndStore:
                 db.execute(f"UPDATE dnd_character SET {field}=?,revision=revision+1,updated_at=? WHERE character_id=?", (value, _now(), character_id))
             base = self._character(db, auth, character_id)
             row = db.execute("SELECT * FROM dnd_character WHERE character_id=?", (character_id,)).fetchone()
-            result = self._doc(row, base)
+            result = self._visible_doc(auth, self._doc(row, base))
             db.execute("INSERT INTO dnd_request VALUES(?,?,?,?)", (self._actor(auth), operation_id, _dump(result), _now()))
         return result
+
+    @staticmethod
+    def _ability_modifier(score: int) -> int:
+        return (score - 10) // 2
+
+    def roll_sheet_field(self, auth: dict[str, Any], character_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        """Resolve a sheet modifier from canonical persisted values before rolling."""
+        self._require_dnd(auth)
+        if not self._can_edit(auth, character_id): raise DndError("You cannot roll for this character", 403)
+        field_type = str(payload.get("field_type", "")); name = str(payload.get("name", ""))[:80]
+        with self.connect() as db:
+            base = self._character(db, auth, character_id); self._ensure(db, character_id)
+            card = self._doc(db.execute("SELECT * FROM dnd_character WHERE character_id=?", (character_id,)).fetchone(), base)
+        scores = card.get("ability_scores") or {}
+        if field_type == "ability":
+            ability = name.lower()
+            if ability not in ABILITIES: raise DndError("Unknown ability")
+            modifier = self._ability_modifier(int(scores.get(ability, 10))) if scores else int(card.get("abilities", {}).get(ability, 0))
+            label, kind = f"{ability.title()} check", "ability"
+        elif field_type == "save":
+            ability = name.lower()
+            if ability not in ABILITIES: raise DndError("Unknown saving throw")
+            base_modifier = self._ability_modifier(int(scores.get(ability, 10))) if scores else int(card.get("abilities", {}).get(ability, 0))
+            training = card.get("save_training", {}).get(ability, {})
+            computed = base_modifier + int(card.get("proficiency_bonus", 2)) * min(1, int(training.get("tier", 0))) + int(training.get("adjustment", 0))
+            modifier = computed if training.get("override") is None else int(training["override"])
+            label, kind = f"{ability.title()} save", "save"
+        elif field_type == "skill":
+            canonical = next((skill for skill in SKILL_ABILITIES if skill.lower() == name.lower()), None)
+            if not canonical: raise DndError("Unknown skill")
+            ability = SKILL_ABILITIES[canonical]
+            base_modifier = self._ability_modifier(int(scores.get(ability, 10))) if scores else int(card.get("abilities", {}).get(ability, 0))
+            training = card.get("skill_training", {}).get(canonical, {})
+            computed = base_modifier + int(card.get("proficiency_bonus", 2)) * int(training.get("tier", 0)) + int(training.get("adjustment", 0))
+            modifier = computed if training.get("override") is None else int(training["override"])
+            label, kind = f"{canonical} check", "skill"
+        else:
+            raise DndError("Unknown sheet roll type")
+        one_time = max(-99, min(99, int(payload.get("bonus", 0))))
+        return self.roll(auth, character_id, {
+            "operation_id": payload.get("operation_id"), "kind": kind, "label": label,
+            "expression": f"1d20{modifier + one_time:+d}", "mode": payload.get("mode", "normal"),
+            "audience": payload.get("audience", "public"),
+        })
 
     @staticmethod
     def _parse_expression(expression: str) -> tuple[int, int, int, str]:

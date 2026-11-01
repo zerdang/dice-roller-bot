@@ -21,6 +21,10 @@ class BattlemapApi:
         app.router.add_patch("/api/battlemap/scenes/{scene_id}", self.update_scene)
         app.router.add_post("/api/battlemap/scenes/{scene_id}/duplicate", self.duplicate_scene)
         app.router.add_delete("/api/battlemap/scenes/{scene_id}", self.delete_scene)
+        app.router.add_get("/api/battlemap/scene-folders", self.scene_folders)
+        app.router.add_post("/api/battlemap/scene-folders", self.create_scene_folder)
+        app.router.add_delete("/api/battlemap/scene-folders/{folder_id}", self.delete_scene_folder)
+        app.router.add_put("/api/battlemap/scenes/{scene_id}/favorite", self.set_scene_favorite)
         app.router.add_get("/api/battlemap/state", self.state)
         app.router.add_post("/api/battlemap/assets", self.upload_asset)
         app.router.add_get("/api/battlemap/assets/{asset_id}", self.get_asset)
@@ -36,6 +40,11 @@ class BattlemapApi:
         app.router.add_post("/api/battlemap/presets", self.create_preset)
         app.router.add_patch("/api/battlemap/presets/{preset_id}", self.update_preset)
         app.router.add_delete("/api/battlemap/presets/{preset_id}", self.delete_preset)
+        app.router.add_get("/api/battlemap/creature-templates", self.creature_templates)
+        app.router.add_post("/api/battlemap/creature-templates", self.create_creature_template)
+        app.router.add_patch("/api/battlemap/creature-templates/{template_id}", self.update_creature_template)
+        app.router.add_delete("/api/battlemap/creature-templates/{template_id}", self.delete_creature_template)
+        app.router.add_post("/api/battlemap/creature-templates/{template_id}/place", self.place_creature_template)
 
     @staticmethod
     async def games(_request: web.Request) -> web.Response:
@@ -90,6 +99,25 @@ class BattlemapApi:
     async def delete_scene(self, request):
         async def action():
             self.store.delete_scene(self.auth(request), self._id(request, "scene_id"), request.headers.get("X-Operation-ID")); return web.Response(status=204)
+        return await self._run(action)
+
+    async def scene_folders(self, request):
+        async def action(): return web.json_response(self.store.list_scene_folders(self.auth(request)))
+        return await self._run(action)
+
+    async def create_scene_folder(self, request):
+        async def action(): return web.json_response(self.store.create_scene_folder(self.auth(request), await self._body(request)), status=201)
+        return await self._run(action)
+
+    async def delete_scene_folder(self, request):
+        async def action():
+            self.store.delete_scene_folder(self.auth(request), self._id(request, "folder_id")); return web.Response(status=204)
+        return await self._run(action)
+
+    async def set_scene_favorite(self, request):
+        async def action():
+            body = await self._body(request)
+            return web.json_response(self.store.set_scene_favorite(self.auth(request), self._id(request, "scene_id"), bool(body.get("favorite"))))
         return await self._run(action)
 
     async def state(self, request):
@@ -182,4 +210,27 @@ class BattlemapApi:
     async def delete_preset(self, request):
         async def action():
             self.store.delete_preset(self.auth(request), self._id(request, "preset_id"), request.headers.get("X-Operation-ID")); return web.Response(status=204)
+        return await self._run(action)
+
+    async def creature_templates(self, request):
+        async def action(): return web.json_response(self.store.list_creature_templates(self.auth(request)))
+        return await self._run(action)
+
+    async def create_creature_template(self, request):
+        async def action(): return web.json_response(self.store.upsert_creature_template(self.auth(request), await self._body(request)), status=201)
+        return await self._run(action)
+
+    async def update_creature_template(self, request):
+        async def action(): return web.json_response(self.store.upsert_creature_template(self.auth(request), await self._body(request), self._id(request, "template_id")))
+        return await self._run(action)
+
+    async def delete_creature_template(self, request):
+        async def action():
+            self.store.delete_creature_template(self.auth(request), self._id(request, "template_id")); return web.Response(status=204)
+        return await self._run(action)
+
+    async def place_creature_template(self, request):
+        async def action():
+            body = await self._body(request)
+            return web.json_response(self.store.place_creature_template(self.auth(request), self._id(request, "template_id"), int(body["scene_id"]), body), status=201)
         return await self._run(action)

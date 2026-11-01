@@ -102,6 +102,57 @@ class DndReleaseOneTests(unittest.TestCase):
         self.assertEqual(own["health"]["hp"] - 3, maps.snapshot(self.player)["tokens"][0]["health"]["hp"])
         self.assertEqual(token["character_id"], self.first["id"])
 
+    @patch("functions.dnd.secrets.randbelow", return_value=9)
+    def test_sheet_rolls_use_scores_training_expertise_and_override(self, _random):
+        self.store.update_card(self.player, self.first["id"], {
+            "revision": 1, "proficiency_bonus": 3,
+            "ability_scores": {"dexterity": 14},
+            "skill_training": {"Stealth": {"tier": 1, "adjustment": 0, "override": None}},
+        })
+        dexterity = self.store.roll_sheet_field(self.player, self.first["id"], {
+            "field_type": "ability", "name": "dexterity", "operation_id": "dex-check",
+        })
+        stealth = self.store.roll_sheet_field(self.player, self.first["id"], {
+            "field_type": "skill", "name": "Stealth", "operation_id": "stealth-proficient",
+        })
+        card = self.store.cards(self.player)[0]
+        self.store.update_card(self.player, self.first["id"], {
+            "revision": card["revision"],
+            "skill_training": {"Stealth": {"tier": 2, "adjustment": 0, "override": None}},
+        })
+        expertise = self.store.roll_sheet_field(self.player, self.first["id"], {
+            "field_type": "skill", "name": "Stealth", "operation_id": "stealth-expertise",
+        })
+        card = self.store.cards(self.player)[0]
+        self.store.update_card(self.player, self.first["id"], {
+            "revision": card["revision"],
+            "skill_training": {"Stealth": {"tier": 2, "adjustment": 0, "override": 7}},
+        })
+        overridden = self.store.roll_sheet_field(self.player, self.first["id"], {
+            "field_type": "skill", "name": "Stealth", "operation_id": "stealth-override",
+        })
+        self.assertEqual((2, 5, 8, 7), (dexterity["modifier"], stealth["modifier"], expertise["modifier"], overridden["modifier"]))
+
+    def test_dm_private_notes_never_enter_player_card(self):
+        card = self.store.cards(self.dm)[0]
+        updated = self.store.update_card(self.dm, self.first["id"], {"revision": card["revision"], "dm_notes": "Secret plot"})
+        self.assertEqual("Secret plot", updated["dm_notes"])
+        player_card = self.store.cards(self.player)[0]
+        self.assertNotIn("dm_notes", player_card)
+        with self.assertRaises(DndError) as denied:
+            self.store.update_card(self.player, self.first["id"], {"revision": player_card["revision"], "dm_notes": "peek"})
+        self.assertEqual(403, denied.exception.status)
+
+    def test_party_roster_is_shared_without_full_sheet_fields(self):
+        roster = self.store.roster(self.player)
+        self.assertEqual({"Ada", "Bo"}, {member["name"] for member in roster})
+        self.assertTrue(next(member for member in roster if member["name"] == "Ada")["can_open"])
+        self.assertFalse(next(member for member in roster if member["name"] == "Bo")["can_open"])
+        for member in roster:
+            self.assertNotIn("inventory", member)
+            self.assertNotIn("notes", member)
+            self.assertNotIn("dm_notes", member)
+
 
 if __name__ == "__main__":
     unittest.main()
