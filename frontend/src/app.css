@@ -1498,7 +1498,26 @@ html[data-theme="simple"] .map-stage, html[data-theme="fantasy"] .map-stage { te
 .battlemap-layout.inspector-collapsed { position: relative; grid-template-columns: 54px minmax(0, 1fr) auto; height: calc(100vh - 148px); }
 .battlemap-empty-with-dock { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; height: calc(100vh - 148px); }
 .battlemap-empty-with-dock .battlemap-empty { min-height: 0; }
-.table-sidebar { grid-template-columns: 64px minmax(0, 1fr); min-width: 340px; max-width: 520px; resize: none; overflow: visible; }
+.table-sidebar { grid-template-columns: 64px minmax(0, 1fr); min-width: 340px; max-width: calc(100vw - 260px); resize: none; overflow: visible; }
+.map-column, .battlemap-workspace, .battlemap-layout, .map-stage { min-width: 0; }
+.battlemap-layout svg { display: block; width: 100%; height: 100%; }
+.scene-sidebar-tools { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-bottom: 1px solid #394352; }
+.scene-sidebar-tools button { flex: 1 1 110px; }
+.sidebar-scene-editor { display: grid; gap: 9px; margin: 8px 0; padding: 12px; border: 1px solid #526171; border-radius: 6px; background: #26313c; }
+.sidebar-scene-editor h3 { margin: 0; }
+.sidebar-scene-editor label { display: grid; gap: 5px; min-width: 0; }
+.sidebar-scene-editor input, .sidebar-scene-editor select { width: 100%; min-width: 0; }
+.sidebar-scene-editor > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.sidebar-scene-editor .scene-editor-secondary { padding-top: 8px; border-top: 1px solid #526171; }
+.sidebar-scene-editor small { overflow-wrap: anywhere; }
+.sidebar-scene-preview { display: block; width: 100%; max-height: 180px; object-fit: contain; border: 1px solid #526171; background: #111; }
+.scene-pane { grid-template-rows: auto auto minmax(0, 1fr); }
+.scene-pane .sidebar-search { margin: 8px 0; width: 100%; }
+.scene-sidebar-row { grid-template-columns: minmax(0, 1fr) repeat(4, auto); }
+@container (max-width: 430px) {
+  .scene-pane .scene-sidebar-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .scene-pane .scene-sidebar-row .scene-name { grid-column: 1 / -1; }
+}
 .table-sidebar.collapsed { width: 64px !important; min-width: 64px; max-width: 64px; }
 .table-sidebar > nav { width: 64px; gap: 6px; padding: 7px; overflow-y: auto; }
 .table-sidebar > nav button { min-width: 48px; min-height: 48px; padding: 5px 3px; }
@@ -1645,7 +1664,6 @@ html[data-theme="simple"] .map-stage, html[data-theme="fantasy"] .map-stage { te
   .battlemap-layout.inspector-collapsed { grid-template-columns: 54px minmax(0, 1fr); }
   .table-sidebar { position: absolute; z-index: 30; top: 0; right: 0; bottom: 0; height: 100%; }
   .table-sidebar.collapsed { position: absolute; }
-  .dock-resize-handle { display: none; }
 }
 
 @media (max-width: 620px) {
@@ -1656,6 +1674,7 @@ html[data-theme="simple"] .map-stage, html[data-theme="fantasy"] .map-stage { te
   .connection { justify-content: center; }
   .preparation-actions > * { flex: 1 1 140px; }
   .table-sidebar:not(.collapsed) { width: 100% !important; min-width: 0; max-width: none; }
+  .dock-resize-handle { display: none; }
   .hud-vitals { grid-template-columns: 1fr 1fr; }
   .hud-vitals article:first-child { grid-column: 1 / -1; }
 }
