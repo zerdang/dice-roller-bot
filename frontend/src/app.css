@@ -2072,7 +2072,7 @@ html body .shell.dnd-shell::after { display: none; }
 
 /* Manual creation is a spacious, independently scrolling dialog. */
 .creation-backdrop { position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; padding: 16px; background: #05080ccc; }
-.creation-dialog { container: creation / inline-size; display: flex; flex-direction: column; width: min(1200px, 100%); height: min(960px, calc(100dvh - 32px)); min-height: 0; border: 1px solid #728393; border-radius: 10px; background: #1c242d; color: #ecf2f7; box-shadow: 0 20px 80px #000a; font: 15px/1.5 Inter, "Segoe UI", sans-serif; overflow: hidden; }
+.creation-dialog { container: creation / inline-size; display: flex; flex-direction: column; width: min(1200px, 100%); height: min(960px, calc(100vh - 32px)); height: min(960px, calc(100dvh - 32px)); min-height: 0; border: 1px solid #728393; border-radius: 10px; background: #1c242d; color: #ecf2f7; box-shadow: 0 20px 80px #000a; font: 15px/1.5 Inter, "Segoe UI", sans-serif; overflow: hidden; }
 .creation-dialog h2, .creation-dialog h3, .creation-dialog h4 { margin: 0 0 10px; color: #f4f7fa; letter-spacing: normal; text-transform: none; }
 .creation-dialog h2 { font-size: 24px; }
 .creation-dialog h3 { font-size: 21px; }
@@ -2081,7 +2081,7 @@ html body .shell.dnd-shell::after { display: none; }
 .creation-dialog button { min-height: 40px; padding: 8px 12px; white-space: normal; text-transform: none; font-size: 14px; }
 .creation-dialog label { display: grid; gap: 6px; margin-bottom: 14px; color: #dbe4ed; font-size: 14px; }
 .creation-dialog input, .creation-dialog select, .creation-dialog textarea { width: 100%; min-width: 0; font: inherit; padding: 8px; }
-.creation-header { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 22px; border-bottom: 1px solid #465464; }
+.creation-header { flex: 0 0 auto; display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 22px; border-bottom: 1px solid #465464; }
 .creation-header > div { flex: 1 1 300px; }
 .creation-header p { margin: 0; color: #b7c6d5; font-size: 13px; }
 .creation-header h2 { margin: 0; }
@@ -2125,6 +2125,9 @@ html body .shell.dnd-shell::after { display: none; }
 .creation-dialog .creation-package input { grid-row: span 2; width: 20px; height: 20px; margin: 2px 0; }
 .creation-dialog .creation-package span { overflow-wrap: anywhere; line-height: 1.5; }
 .creation-dialog .creation-package:has(input:checked) { border-color: #72d8ca; background: #24443f; }
+.creation-portrait-preview { display: block; width: min(100%, 300px); aspect-ratio: 1; object-fit: cover; margin: 16px 0; border: 1px solid #72d8ca; border-radius: 10px; }
+.sheet-portrait { position: relative; overflow: hidden; }
+.sheet-portrait img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .creation-drafts > main { overflow-y: auto; }
 @container creation (max-width: 900px) {
   .creation-body { grid-template-columns: minmax(0, 1fr); }
@@ -2138,9 +2141,20 @@ html body .shell.dnd-shell::after { display: none; }
   .builder-options article { flex-wrap: wrap; }
   .builder-options article > div { flex-basis: 100%; }
 }
+@media (max-width: 900px) {
+  .creation-body { grid-template-columns: minmax(0, 1fr); }
+  .creation-summary { border-left: 0; border-top: 1px solid #465464; }
+}
+@media (max-width: 600px) {
+  .creation-main, .creation-summary { padding: 14px; }
+  .creation-abilities { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .builder-search, .creation-checks { grid-template-columns: minmax(0, 1fr); }
+  .builder-options article { flex-wrap: wrap; }
+  .builder-options article > div { flex-basis: 100%; }
+}
 @media (max-width: 480px) {
   .creation-backdrop { padding: 0; }
-  .creation-dialog { height: 100dvh; border-radius: 0; }
+  .creation-dialog { height: 100vh; height: 100dvh; border-radius: 0; }
 }
 
 .dnd-campaign-home {

@@ -206,6 +206,6 @@ export default function DndSidebar({ dashboard, cards, roster, rolls, audience, 
       {tab === "scenes" && <SceneBrowser request={request} reportError={reportError} viewedSceneId={mapContext?.sceneId} />}
       {tab === "selection" && <section className="sidebar-pane selection-pane"><header><div><h2>Selection</h2><p>Contextual scene and token controls</p></div></header><div className="selection-scroll">{selectionPanel}</div></section>}
     </div>}
-    {builderOpen && <CharacterBuilder request={request} isWarden={isWarden} onClose={() => setBuilderOpen(false)} />}
+    {builderOpen && <CharacterBuilder request={request} isWarden={isWarden} onFinalized={() => refresh(true)} onClose={() => setBuilderOpen(false)} />}
   </aside>;
 }

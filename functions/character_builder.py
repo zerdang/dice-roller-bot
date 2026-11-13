@@ -5,9 +5,11 @@ the completed, reviewed draft after the remaining feature/equipment steps exist.
 """
 import json
 import secrets
+import io
 from collections import Counter
+from PIL import Image, ImageOps, UnidentifiedImageError
 
-from functions.dnd import ABILITIES, SKILL_ABILITIES, DndError, _now
+from functions.dnd import ABILITIES, SKILL_ABILITIES, DndError, DndStore, _now
 from functions.reference import ReferenceStore
 
 SHORT = dict(zip(("str", "dex", "con", "int", "wis", "cha"), ABILITIES))
@@ -27,6 +29,13 @@ CREATE TABLE IF NOT EXISTS creation_policy (campaign_id INTEGER PRIMARY KEY, rev
 CREATE TABLE IF NOT EXISTS creation_roll_pool (
  campaign_id INTEGER NOT NULL, owner TEXT NOT NULL, dice TEXT NOT NULL,
  created_at TEXT NOT NULL, PRIMARY KEY(campaign_id,owner)
+);
+CREATE TABLE IF NOT EXISTS creation_finalization (
+ draft_id TEXT PRIMARY KEY, character_id INTEGER NOT NULL, snapshot TEXT NOT NULL,
+ finalized_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS creation_portrait (
+ draft_id TEXT PRIMARY KEY, image BLOB NOT NULL, updated_at TEXT NOT NULL
 );
 """
 
@@ -109,7 +118,7 @@ class CharacterBuilderStore(ReferenceStore):
                 payload = {"name": "", "class_id": "", "species_id": "", "background_id": "", "lineage_id": "",
                            "method": settings["methods"][0], "scores": dict(zip(ABILITIES, ARRAY)),
                            "boosts": dict.fromkeys(ABILITIES, 0), "class_skills": [],
-                           "equipment": {"class": "", "background": ""}, "feature_choices": "", "spell_choices": "", "spell_ids": [], "notes": ""}
+                           "equipment": {"class": "", "background": ""}, "feature_choices": "", "spell_choices": "", "spell_ids": [], "language_ids": [], "feat_ids": [], "notes": ""}
                 draft_id, now = secrets.token_hex(16), _now()
                 db.execute("INSERT INTO creation_draft VALUES(?,?,?,?,?,1,?,?,?)", (draft_id, auth["campaign_id"], owner, body["operation_id"], active["version"], json.dumps(payload), now, now))
         return self.get(auth, draft_id)
@@ -124,7 +133,7 @@ class CharacterBuilderStore(ReferenceStore):
     def clean(body):
         if not isinstance(body, dict):
             raise DndError("Draft must be an object")
-        allowed = {"name", "class_id", "species_id", "background_id", "lineage_id", "method", "scores", "boosts", "class_skills", "equipment", "feature_choices", "spell_choices", "spell_ids", "notes"}
+        allowed = {"name", "class_id", "species_id", "background_id", "lineage_id", "method", "scores", "boosts", "class_skills", "equipment", "feature_choices", "spell_choices", "spell_ids", "language_ids", "feat_ids", "notes"}
         if set(body) - allowed:
             raise DndError("Unknown draft fields")
         out = {}
@@ -153,10 +162,11 @@ class CharacterBuilderStore(ReferenceStore):
             if not isinstance(value, str) or len(value) > 6000:
                 raise DndError(f"Invalid {key}")
             out[key] = value.strip()
-        spell_ids = body.get("spell_ids", [])
-        if not isinstance(spell_ids, list) or len(spell_ids) > 50 or any(not isinstance(value, str) or len(value) != 32 for value in spell_ids) or len(set(spell_ids)) != len(spell_ids):
-            raise DndError("Invalid spell selections")
-        out["spell_ids"] = spell_ids
+        for key, maximum in (("spell_ids", 50), ("language_ids", 10), ("feat_ids", 10)):
+            values = body.get(key, [])
+            if not isinstance(values, list) or len(values) > maximum or any(not isinstance(value, str) or len(value) != 32 for value in values) or len(set(values)) != len(values):
+                raise DndError(f"Invalid {key} selections")
+            out[key] = values
         return out
 
     def save(self, auth, draft_id, body):
@@ -166,6 +176,8 @@ class CharacterBuilderStore(ReferenceStore):
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = self.owned(db, auth, draft_id)
+            if db.execute("SELECT 1 FROM creation_finalization WHERE draft_id=?", (draft_id,)).fetchone():
+                raise DndError("This draft is already finalized", 409)
             if body.get("revision") != row["revision"]:
                 raise DndError("This draft changed in another window. Reload it before saving.", 409)
             # Do not reject incomplete but structurally valid drafts; preview gives actionable errors.
@@ -362,6 +374,40 @@ class CharacterBuilderStore(ReferenceStore):
                 review.append(f"Resolve feats granted by {value['name']} in the Features step.")
             if value and value["raw"].get("languageProficiencies"):
                 review.append(f"Resolve languages granted by {value['name']} in the Features step.")
+        languages = []
+        for language_id in payload.get("language_ids", []):
+            language = self.selected(db, auth, row["version"], language_id, {"language"})
+            if not language or language["raw"].get("type") != "standard":
+                error("features", "Choose available standard languages for your origin.")
+                continue
+            languages.append({"id": language["id"], "name": language["name"], "source": language["source"]})
+        if len(languages) != 2 or len({language["name"].casefold() for language in languages}) != 2 or any(language["name"].casefold() == "common" for language in languages):
+            error("features", "Choose two different standard languages in addition to Common.")
+        feats = []
+        feat_count = 0
+        for label in ("species", "background"):
+            value = selected[label]
+            for group in (value["raw"].get("feats") or []) if value else []:
+                if not isinstance(group, dict):
+                    continue
+                for key, rule in group.items():
+                    if key == "anyFromCategory" and isinstance(rule, dict):
+                        feat_count += rule.get("count", 1)
+                    elif rule is True:
+                        name, _, source = key.partition("|")
+                        feats.append({"name": name, "source": source or value["source"], "origin": label})
+                    else:
+                        review.append(f"Resolve {label} feat choices from the source details.")
+        for feat_id in payload.get("feat_ids", []):
+            feat = self.selected(db, auth, row["version"], feat_id, {"feat"})
+            if not feat:
+                error("features", "A selected feat is unavailable in this campaign.")
+                continue
+            if feat["raw"].get("category") != "O":
+                error("features", f"{feat['name']} is not an Origin feat.")
+            feats.append({"id": feat["id"], "name": feat["name"], "source": feat["source"], "origin": "choice"})
+        if len(payload.get("feat_ids", [])) != feat_count:
+            error("features", f"Choose {feat_count} Origin feats granted by your species or background.")
         if cls and (cls["raw"].get("cantripProgression") or cls["raw"].get("preparedSpellsProgression") or cls["raw"].get("spellsKnownProgression")):
             review.append("Verify spell selections and counts against the class source before finalization.")
         spell_limits = {"cantrips": 0, "level_one": 0}
@@ -389,15 +435,14 @@ class CharacterBuilderStore(ReferenceStore):
                 error("spells", f"Choose {limit - count} more {label} for this class.")
         if spells:
             review.append("Confirm every selected spell is on the class or origin spell list; catalog spell records do not contain class eligibility.")
-        review.append("Portraits and final character creation are still pending.")
         return {"errors": errors, "review": list(dict.fromkeys(review)), "eligible_boosts": eligible,
                 "scores": final, "modifiers": modifiers, "points_spent": spent if method == "point_buy" else None,
                 "class_skill_options": class_options, "class_skill_count": class_count,
                 "skill_grants": granted, "roll_pool": pool, "policy": settings,
                 "equipment_options": equipment_options, "level_one_features": level_one_features,
-                "spell_limits": spell_limits, "spells": spells,
+                "spell_limits": spell_limits, "spells": spells, "languages": languages, "feats": feats, "feat_choice_count": feat_count,
                 "selected": {key: {k: v for k, v in value.items() if k != "raw"} if value else None for key, value in selected.items()},
-                "can_finalize": False, "foundation_complete": not errors}
+                "can_finalize": not errors, "foundation_complete": not errors}
 
     def get(self, auth, draft_id):
         with self.connect() as db:
@@ -407,8 +452,22 @@ class CharacterBuilderStore(ReferenceStore):
             payload.setdefault("feature_choices", "")
             payload.setdefault("spell_choices", "")
             payload.setdefault("spell_ids", [])
-            return {"id": row["id"], "revision": row["revision"], "version": row["version"], "draft": payload,
-                    "updated_at": row["updated_at"], "preview": self.evaluate(db, auth, row, payload)}
+            payload.setdefault("language_ids", [])
+            payload.setdefault("feat_ids", [])
+            result = {"id": row["id"], "revision": row["revision"], "version": row["version"], "draft": payload,
+                      "updated_at": row["updated_at"], "preview": self.evaluate(db, auth, row, payload)}
+            if db.execute("SELECT 1 FROM creation_portrait WHERE draft_id=?", (draft_id,)).fetchone():
+                result["portrait_url"] = f"/api/dnd/creation/drafts/{draft_id}/portrait"
+            if auth["role"] == "warden":
+                finalized = db.execute("SELECT character_id FROM creation_finalization WHERE draft_id=?", (draft_id,)).fetchone()
+                player_id = row["owner"][5:] if row["owner"].startswith("user:") else None
+                target = db.execute("SELECT id,name FROM character WHERE campaign_id=? AND discord_user_id=?", (auth["campaign_id"], player_id)).fetchone() if player_id else None
+                if target:
+                    DndStore._ensure(db, target["id"])
+                    sheet = db.execute("SELECT revision FROM dnd_character WHERE character_id=?", (target["id"],)).fetchone()
+                    result["target"] = {"id": target["id"], "name": target["name"], "revision": sheet["revision"]}
+                result["finalized_character_id"] = finalized["character_id"] if finalized else None
+            return result
 
     def preview(self, auth, draft_id, body):
         payload = self.clean(body.get("draft") if isinstance(body, dict) else None)
@@ -417,9 +476,130 @@ class CharacterBuilderStore(ReferenceStore):
             return self.evaluate(db, auth, row, payload)
 
     def options(self, auth, draft_id, kind, query="", source="", edition="", offset=0):
-        if kind not in {"class", "race", "subrace", "background", "spell"}:
+        if kind not in {"class", "race", "subrace", "background", "spell", "language", "feat"}:
             raise DndError("Unsupported creation category")
         with self.connect() as db:
             row = self.owned(db, auth, draft_id)
             version = row["version"]
         return self.search(auth, query=query, kind=kind, source=source, edition=edition, offset=offset, version=version)
+
+    def finalize(self, auth, draft_id, body):
+        """DM approval applies a validated draft once, preserving the prior sheet."""
+        if auth.get("role") != "warden":
+            raise DndError("Only the DM can approve a character draft", 403)
+        if not isinstance(body, dict) or type(body.get("revision")) is not int:
+            raise DndError("Draft revision is required")
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = self.owned(db, auth, draft_id)
+            prior = db.execute("SELECT character_id FROM creation_finalization WHERE draft_id=?", (draft_id,)).fetchone()
+            if prior:
+                return {"character_id": prior["character_id"], "already_finalized": True}
+            if row["revision"] != body["revision"]:
+                raise DndError("Draft changed; reload before approving", 409)
+            payload = self.clean(json.loads(row["payload"]))
+            preview = self.evaluate(db, auth, row, payload)
+            if preview["errors"]:
+                raise DndError("Resolve all draft errors before approval", 409)
+            if preview["review"] and not body.get("reviewed") is True:
+                raise DndError("Confirm manual review of source-dependent choices", 409)
+            player_id = row["owner"][5:] if row["owner"].startswith("user:") else None
+            existing = db.execute("SELECT * FROM character WHERE campaign_id=? AND discord_user_id=?", (auth["campaign_id"], player_id)).fetchone() if player_id else None
+            if existing:
+                character_id = existing["id"]
+                DndStore._ensure(db, character_id)
+                card = db.execute("SELECT * FROM dnd_character WHERE character_id=?", (character_id,)).fetchone()
+                if body.get("target_revision") != card["revision"]:
+                    raise DndError("Live sheet changed; reload before approving", 409)
+                if body.get("replace_existing") is not True:
+                    raise DndError("Confirm replacement of the existing character sheet", 409)
+                snapshot = json.dumps({"character": dict(existing), "sheet": dict(card)})
+            else:
+                if body.get("target_revision") is not None:
+                    raise DndError("The target character changed; reload", 409)
+                snapshot = json.dumps({"character": None, "sheet": None})
+                db.execute("INSERT INTO character(campaign_id,discord_user_id,name,player_token_hash,created_at) VALUES(?,?,?,?,?)",
+                           (auth["campaign_id"], None, payload["name"], secrets.token_hex(32), _now()))
+                character_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+                DndStore._ensure(db, character_id)
+            cls = self.selected(db, auth, row["version"], payload["class_id"], {"class"})
+            species = self.selected(db, auth, row["version"], payload["species_id"], {"race"})
+            background = self.selected(db, auth, row["version"], payload["background_id"], {"background"})
+            con = preview["modifiers"]["constitution"]
+            hit_die = cls["raw"].get("hd", {}).get("faces", 8)
+            hp = max(1, hit_die + con) if type(hit_die) is int else 10
+            skill_training = {SKILLS[name]: {"tier": 1, "adjustment": 0, "override": None} for name in preview["skill_grants"]}
+            save_training = {SHORT[name]: {"tier": 1, "adjustment": 0, "override": None} for name in cls["raw"].get("proficiency", []) if name in SHORT}
+            inventory = []
+            for label, origin in (("class", cls), ("background", background)):
+                data = origin["raw"].get("startingEquipment")
+                groups = data.get("defaultData") if isinstance(data, dict) else data
+                if not isinstance(groups, list) or len(groups) != 1:
+                    continue
+                for item in groups[0].get(payload["equipment"][label], []):
+                    if "item" in item:
+                        inventory.append({"name": item["item"].split("|")[0], "quantity": item.get("quantity", 1), "notes": label})
+                    elif "special" in item:
+                        inventory.append({"name": str(item["special"]), "quantity": 1, "notes": label})
+                    elif "value" in item:
+                        inventory.append({"name": "Gold pieces", "quantity": item["value"] / 100, "notes": label})
+            features = [{"name": feature["name"], "notes": f"{feature['source']} · class"} for feature in preview["level_one_features"]]
+            features.extend({"name": feat["name"], "notes": f"{feat['source']} · {feat['origin']}"} for feat in preview["feats"])
+            spells = [{"name": spell["name"], "level": spell["level"], "notes": spell["source"]} for spell in preview["spells"]]
+            caster = cls["raw"].get("casterProgression")
+            first_level_slots = {"full": 2, "half": 2, "artificer": 2, "pact": 1}.get(caster, 0)
+            spell_ability = SHORT.get(cls["raw"].get("spellcastingAbility"))
+            spell_modifier = preview["modifiers"].get(spell_ability, 0)
+            identity = {"species": species["name"], "class_name": cls["name"], "background": background["name"], "level": "1"}
+            fields = {"ability_scores_json": preview["scores"], "abilities_json": preview["modifiers"],
+                      "skill_training_json": skill_training, "save_training_json": save_training,
+                      "identity_json": identity, "inventory_json": inventory, "features_json": features,
+                      "spells_json": spells, "spell_slots_json": {"1": {"current": first_level_slots, "max": first_level_slots}} if first_level_slots else {},
+                      "background_json": {"source": background["source"], "notes": payload["feature_choices"]},
+                      "training_json": {"languages": ", ".join(["Common", *(language["name"] for language in preview["languages"])]),
+                                        "feature_choices": payload["feature_choices"], "spell_choices": payload["spell_choices"]}}
+            assignments = ",".join(f"{column}=?" for column in fields)
+            db.execute(f"UPDATE dnd_character SET {assignments},proficiency_bonus=2,initiative_modifier=?,spell_save_dc=?,spell_attack_modifier=?,revision=revision+1,updated_at=? WHERE character_id=?",
+                       [*(json.dumps(value) for value in fields.values()), preview["modifiers"]["dexterity"], 10 + spell_modifier, 2 + spell_modifier, _now(), character_id])
+            db.execute("UPDATE character SET name=?,class_name=?,hp=?,max_hp=? WHERE id=?", (payload["name"], cls["name"], hp, hp, character_id))
+            db.execute("INSERT INTO creation_finalization VALUES(?,?,?,?)", (draft_id, character_id, snapshot, _now()))
+            return {"character_id": character_id, "already_finalized": False}
+
+    def upload_portrait(self, auth, draft_id, data):
+        if len(data) > 3 * 1024 * 1024:
+            raise DndError("Portrait must be 3 MB or smaller")
+        try:
+            with Image.open(io.BytesIO(data)) as original:
+                if original.format not in {"PNG", "JPEG", "WEBP"} or original.width > 8000 or original.height > 8000 or original.width * original.height > 20_000_000:
+                    raise DndError("Use a PNG, JPEG, or WebP portrait up to 20 megapixels")
+                original.load()
+                image = ImageOps.fit(ImageOps.exif_transpose(original).convert("RGB"), (512, 512), method=Image.Resampling.LANCZOS)
+                output = io.BytesIO()
+                image.save(output, format="JPEG", quality=88)
+        except (UnidentifiedImageError, OSError, ValueError) as error:
+            raise DndError("Invalid portrait image") from error
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self.owned(db, auth, draft_id)
+            db.execute("INSERT OR REPLACE INTO creation_portrait VALUES(?,?,?)", (draft_id, output.getvalue(), _now()))
+        return {"portrait_url": f"/api/dnd/creation/drafts/{draft_id}/portrait"}
+
+    def portrait(self, auth, draft_id):
+        with self.connect() as db:
+            self.owned(db, auth, draft_id)
+            row = db.execute("SELECT image FROM creation_portrait WHERE draft_id=?", (draft_id,)).fetchone()
+            if not row:
+                raise DndError("Portrait not found", 404)
+            return bytes(row["image"])
+
+    def character_portrait(self, auth, character_id):
+        self.require_auth(auth)
+        if auth["role"] != "warden" and auth.get("character_id") != character_id:
+            raise DndError("Portrait not found", 404)
+        with self.connect() as db:
+            row = db.execute("SELECT p.image FROM creation_finalization f JOIN creation_portrait p ON p.draft_id=f.draft_id "
+                             "JOIN character c ON c.id=f.character_id WHERE c.id=? AND c.campaign_id=? ORDER BY f.finalized_at DESC",
+                             (character_id, auth["campaign_id"])).fetchone()
+            if not row:
+                raise DndError("Portrait not found", 404)
+            return bytes(row["image"])

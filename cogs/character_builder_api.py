@@ -18,6 +18,10 @@ class CharacterBuilderApi:
         app.router.add_post("/api/dnd/creation/drafts/{draft_id}/preview", self.preview)
         app.router.add_post("/api/dnd/creation/drafts/{draft_id}/roll", self.roll)
         app.router.add_get("/api/dnd/creation/drafts/{draft_id}/options", self.options)
+        app.router.add_post("/api/dnd/creation/drafts/{draft_id}/finalize", self.finalize)
+        app.router.add_post("/api/dnd/creation/drafts/{draft_id}/portrait", self.upload_portrait)
+        app.router.add_get("/api/dnd/creation/drafts/{draft_id}/portrait", self.portrait)
+        app.router.add_get("/api/dnd/creation/characters/{character_id}/portrait", self.character_portrait)
 
     async def call(self, method, *args, **kwargs):
         try:
@@ -70,3 +74,28 @@ class CharacterBuilderApi:
         except ValueError:
             raise web.HTTPBadRequest(text="Invalid page offset")
         return await self.call(self.store.options, auth, request.match_info["draft_id"], request.query.get("kind", "class"), request.query.get("q", ""), request.query.get("source", ""), request.query.get("edition", ""), offset)
+
+    async def finalize(self, request):
+        auth = self.auth(request)
+        return await self.call(self.store.finalize, auth, request.match_info["draft_id"], await self.body(request))
+
+    async def upload_portrait(self, request):
+        auth = self.auth(request)
+        if not request.content_type.startswith("image/"):
+            raise web.HTTPBadRequest(text="Upload a portrait image")
+        data = await request.read()
+        return await self.call(self.store.upload_portrait, auth, request.match_info["draft_id"], data)
+
+    async def portrait(self, request):
+        try:
+            image = await asyncio.to_thread(self.store.portrait, self.auth(request), request.match_info["draft_id"])
+            return web.Response(body=image, content_type="image/jpeg")
+        except DndError as error:
+            raise {403: web.HTTPForbidden, 404: web.HTTPNotFound}.get(error.status, web.HTTPBadRequest)(text=str(error))
+
+    async def character_portrait(self, request):
+        try:
+            image = await asyncio.to_thread(self.store.character_portrait, self.auth(request), int(request.match_info["character_id"]))
+            return web.Response(body=image, content_type="image/jpeg")
+        except DndError as error:
+            raise {403: web.HTTPForbidden, 404: web.HTTPNotFound}.get(error.status, web.HTTPBadRequest)(text=str(error))

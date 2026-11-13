@@ -7,3 +7,4 @@ configparser==6.0.0
 asyncio~=3.4.3
 prometheus-client==0.17.1
 yoyo-migrations~=8.2.0
+Pillow>=11,<13

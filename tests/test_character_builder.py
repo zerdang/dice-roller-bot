@@ -1,4 +1,5 @@
 import copy
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +7,9 @@ from unittest.mock import patch
 
 from functions.character_builder import CharacterBuilderStore, ABILITIES, ARRAY
 from functions.dnd import DndError
+from functions.dnd import DndStore
+from functions.companion import CompanionStore
+from PIL import Image
 
 
 def catalog():
@@ -14,10 +18,14 @@ def catalog():
          "classFeatures": ["First Feature|Example Warrior|XPHB|1", "Later Feature|Example Warrior|XPHB|2"],
          "startingEquipment": {"defaultData": [{"A": [{"item": "sword|xphb"}, {"value": 500}], "B": [{"value": 1000}]}]}},
         {"name": "Example Warrior", "source": "PHB", "entries": ["Legacy example."]},
-    ], "race": [{"name": "Example Folk", "source": "XPHB", "speed": 30}],
+    ], "race": [{"name": "Example Folk", "source": "XPHB", "speed": 30},
+                {"name": "Human", "source": "XPHB", "feats": [{"anyFromCategory": {"category": ["O"], "count": 1}}]}],
         "subrace": [{"name": "Example Lineage", "source": "TEST", "raceName": "Example Folk", "raceSource": "XPHB"}],
         "spell": [{"name": "Sample Spark", "source": "XPHB", "level": 0}, {"name": "Sample Shield", "source": "XPHB", "level": 1},
                   {"name": "Sample Blast", "source": "XPHB", "level": 3}],
+        "language": [{"name": "Elvish", "source": "XPHB", "type": "standard"}, {"name": "Dwarvish", "source": "XPHB", "type": "standard"}],
+        "feat": [{"name": "Sample Origin Feat", "source": "XPHB", "category": "O"},
+                 {"name": "Sample General Feat", "source": "XPHB", "category": "G"}],
         "background": [{"name": "Example Soldier", "source": "XPHB", "skillProficiencies": [{"athletics": True, "intimidation": True}],
                         "ability": [{"choose": {"weighted": {"from": ["str", "dex", "con"], "weights": [2, 1]}}},
                                     {"choose": {"weighted": {"from": ["str", "dex", "con"], "weights": [1, 1, 1]}}}],
@@ -27,6 +35,8 @@ def catalog():
 class CharacterBuilderTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
+        CompanionStore(Path(self.temp.name) / "builder.db")
+        DndStore(Path(self.temp.name) / "builder.db")
         self.store = CharacterBuilderStore(Path(self.temp.name) / "builder.db")
         self.version = "a" * 40
         self.store.import_documents(self.version, catalog())
@@ -45,6 +55,7 @@ class CharacterBuilderTests(unittest.TestCase):
             draft[field] = self.store.search(self.player, kind=kind, edition="2024")["items"][0]["id"]
         draft["boosts"].update(strength=2, constitution=1)
         draft["equipment"] = {"class": "A", "background": "B"}
+        draft["language_ids"] = [item["id"] for item in self.store.search(self.player, kind="language")["items"]]
         return draft
 
     def evaluate(self, draft):
@@ -62,11 +73,11 @@ class CharacterBuilderTests(unittest.TestCase):
         with self.assertRaises(DndError):
             self.store.get({**self.dm, "campaign_id": 2}, self.created["id"])
 
-    def test_valid_foundation_derives_scores_and_provenance_but_cannot_finalize(self):
+    def test_valid_foundation_derives_scores_and_provenance_for_dm_review(self):
         preview = self.evaluate(self.complete())
         self.assertEqual([], preview["errors"])
         self.assertTrue(preview["foundation_complete"])
-        self.assertFalse(preview["can_finalize"])
+        self.assertTrue(preview["can_finalize"])
         self.assertEqual(17, preview["scores"]["strength"])
         self.assertEqual(3, preview["modifiers"]["strength"])
         self.assertEqual(["background"], preview["skill_grants"]["athletics"])
@@ -93,6 +104,58 @@ class CharacterBuilderTests(unittest.TestCase):
         self.assertEqual([], self.evaluate(draft)["errors"])
         self.store.set_policy(self.dm, ["TEST"])
         self.assertTrue(any(e["step"] == "spells" for e in self.evaluate(draft)["errors"]))
+
+    def test_dm_finalization_is_atomic_retry_safe_and_preserves_prior_sheet(self):
+        CompanionStore(self.store.path)
+        DndStore(self.store.path)
+        with self.store.connect() as db:
+            db.execute("INSERT INTO campaign(id,guild_id,name,game_system,warden_token_hash,created_at) VALUES(1,'g','Table','dnd','token','now')")
+            db.execute("INSERT INTO character(id,campaign_id,discord_user_id,name,player_token_hash,created_at) VALUES(12,1,'player','Old hero','player-token','now')")
+        draft = self.complete()
+        saved = self.store.save(self.player, self.created["id"], {"revision": 1, "draft": draft})
+        target = self.store.get(self.dm, self.created["id"])["target"]
+        body = {"revision": saved["revision"], "target_revision": target["revision"], "reviewed": True, "replace_existing": True}
+        with self.assertRaises(DndError):
+            self.store.finalize(self.player, self.created["id"], body)
+        with self.assertRaises(DndError):
+            self.store.finalize(self.dm, self.created["id"], {**body, "target_revision": 999})
+        self.assertEqual("Old hero", DndStore(self.store.path).cards(self.player)[0]["name"])
+        result = self.store.finalize(self.dm, self.created["id"], body)
+        self.assertEqual(12, result["character_id"])
+        self.assertTrue(self.store.finalize(self.dm, self.created["id"], body)["already_finalized"])
+        card = DndStore(self.store.path).cards(self.player)[0]
+        self.assertEqual("Test hero", card["name"])
+        self.assertEqual(17, card["ability_scores"]["strength"])
+        self.assertEqual("Example Warrior", card["identity"]["class_name"])
+        self.assertEqual(3, len(card["inventory"]))
+        with self.store.connect() as db:
+            snapshot = db.execute("SELECT snapshot FROM creation_finalization WHERE draft_id=?", (self.created["id"],)).fetchone()[0]
+        self.assertEqual("Old hero", __import__("json").loads(snapshot)["character"]["name"])
+
+    def test_portrait_upload_is_owned_and_normalized(self):
+        image = Image.new("RGB", (900, 600), "#aaccdd")
+        data = io.BytesIO()
+        image.save(data, format="PNG")
+        self.store.upload_portrait(self.player, self.created["id"], data.getvalue())
+        with Image.open(io.BytesIO(self.store.portrait(self.player, self.created["id"]))) as saved:
+            self.assertEqual((512, 512), saved.size)
+            self.assertEqual("JPEG", saved.format)
+        with self.assertRaises(DndError):
+            self.store.portrait(self.other, self.created["id"])
+        with self.assertRaises(DndError):
+            self.store.upload_portrait(self.player, self.created["id"], b"not an image")
+
+    def test_human_origin_feat_and_two_languages_are_required(self):
+        draft = self.complete()
+        draft["species_id"] = next(item["id"] for item in self.store.options(self.player, self.created["id"], "race")["items"] if item["name"] == "Human")
+        self.assertTrue(any("Origin feats" in e["message"] for e in self.evaluate(draft)["errors"]))
+        feats = {item["name"]: item["id"] for item in self.store.options(self.player, self.created["id"], "feat")["items"]}
+        draft["feat_ids"] = [feats["Sample General Feat"]]
+        self.assertTrue(any("not an Origin feat" in e["message"] for e in self.evaluate(draft)["errors"]))
+        draft["feat_ids"] = [feats["Sample Origin Feat"]]
+        self.assertEqual([], self.evaluate(draft)["errors"])
+        draft["language_ids"] = draft["language_ids"][:1]
+        self.assertTrue(any(e["step"] == "features" for e in self.evaluate(draft)["errors"]))
 
     def test_save_conflicts_preserve_last_successful_draft(self):
         draft = self.complete()
