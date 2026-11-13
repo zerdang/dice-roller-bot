@@ -429,6 +429,25 @@ class BattlemapStore:
             row = db.execute("SELECT * FROM map_scene_folder WHERE id=?", (folder_id,)).fetchone()
         return {**dict(row), "scene_count": 0}
 
+    def update_scene_folder(self, auth: dict[str, Any], folder_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        self._require_dnd(auth)
+        if auth["role"] != "warden": raise MapError("Only the DM can manage scene folders", 403)
+        name = str(payload.get("name", "")).strip()[:80]
+        if not name: raise MapError("Folder name is required")
+        with self.connect() as db:
+            row = db.execute("SELECT id FROM map_scene_folder WHERE id=? AND campaign_id=?", (folder_id, auth["campaign_id"])).fetchone()
+            if not row: raise MapError("Scene folder not found", 404)
+            try:
+                db.execute("UPDATE map_scene_folder SET name=? WHERE id=?", (name, folder_id))
+            except sqlite3.IntegrityError as error:
+                raise MapError("A folder with that name already exists", 409) from error
+            updated = db.execute(
+                "SELECT f.*,COUNT(s.id) AS scene_count FROM map_scene_folder f "
+                "LEFT JOIN map_scene s ON s.folder_id=f.id AND s.campaign_id=f.campaign_id "
+                "WHERE f.id=? GROUP BY f.id", (folder_id,),
+            ).fetchone()
+        return dict(updated)
+
     def delete_scene_folder(self, auth: dict[str, Any], folder_id: int) -> None:
         self._require_dnd(auth)
         if auth["role"] != "warden": raise MapError("Only the DM can manage scene folders", 403)

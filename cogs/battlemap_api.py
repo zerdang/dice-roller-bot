@@ -23,6 +23,7 @@ class BattlemapApi:
         app.router.add_delete("/api/battlemap/scenes/{scene_id}", self.delete_scene)
         app.router.add_get("/api/battlemap/scene-folders", self.scene_folders)
         app.router.add_post("/api/battlemap/scene-folders", self.create_scene_folder)
+        app.router.add_patch("/api/battlemap/scene-folders/{folder_id}", self.update_scene_folder)
         app.router.add_delete("/api/battlemap/scene-folders/{folder_id}", self.delete_scene_folder)
         app.router.add_put("/api/battlemap/scenes/{scene_id}/favorite", self.set_scene_favorite)
         app.router.add_get("/api/battlemap/state", self.state)
@@ -107,6 +108,10 @@ class BattlemapApi:
 
     async def create_scene_folder(self, request):
         async def action(): return web.json_response(self.store.create_scene_folder(self.auth(request), await self._body(request)), status=201)
+        return await self._run(action)
+
+    async def update_scene_folder(self, request):
+        async def action(): return web.json_response(self.store.update_scene_folder(self.auth(request), self._id(request, "folder_id"), await self._body(request)))
         return await self._run(action)
 
     async def delete_scene_folder(self, request):

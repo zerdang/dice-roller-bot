@@ -1535,6 +1535,56 @@ html[data-theme="simple"] .map-stage, html[data-theme="fantasy"] .map-stage { te
 .scene-sidebar-row.live { border-color: #55c8bb; box-shadow: inset 3px 0 0 #55c8bb; }
 .scene-sidebar-row .scene-name small { margin-top: 3px; font-size: 12px; }
 .scene-sidebar-row .show-scene { border-color: #55c8bb; color: #bff9f2; }
+.scene-view-status {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  padding: 9px 12px;
+  border-bottom: 1px solid #394352;
+  background: #171d24;
+}
+.scene-view-status span {
+  min-width: 0;
+  overflow: hidden;
+  padding: 6px 8px;
+  border: 1px solid #465464;
+  border-radius: 5px;
+  color: var(--dnd-text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scene-view-status span b { display: block; color: var(--dnd-muted); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.scene-view-status button { min-height: 34px; }
+.scene-view-status .show-scene { border-color: #55c8bb; color: #bff9f2; }
+.scene-folder-scroll { display: grid; align-content: start; gap: 10px; }
+.scene-folder-group {
+  min-height: 74px;
+  padding: 7px;
+  border: 1px solid #3d4958;
+  border-radius: 6px;
+  background: #1c232c;
+  transition: border-color .12s ease, background .12s ease;
+}
+.scene-folder-group.drop-target { border-color: #8ae5db; background: #18322f; box-shadow: inset 0 0 0 1px #55c8bb; }
+.scene-folder-group > header {
+  display: flex;
+  min-height: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 5px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid #394352;
+}
+.scene-folder-group > header > div { display: flex; min-width: 0; align-items: center; gap: 5px; }
+.scene-folder-group > header strong { overflow: hidden; color: #dce7ef; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.scene-folder-group > header span { display: inline-grid; min-width: 20px; min-height: 20px; place-items: center; border-radius: 10px; background: #34414e; color: var(--dnd-muted); font-size: 10px; }
+.scene-folder-group > header button { min-height: 28px; padding: 3px 6px; font-size: 10px; }
+.scene-folder-group > p { margin: 8px; color: var(--dnd-muted); font-size: 11px; text-align: center; }
+.scene-sidebar-row[draggable="true"] { cursor: grab; }
+.scene-sidebar-row[draggable="true"]:active { cursor: grabbing; }
+.scene-sidebar-row.viewed { border-color: #d9a952; }
 
 .character-pane { grid-template-rows: auto minmax(0, 1fr); }
 .character-hud { overflow-y: auto; padding: 14px; }
