@@ -24,17 +24,6 @@ function readCookie(name) {
   return document.cookie.split(";").map((value) => value.trim()).find((value) => value.startsWith(prefix))?.slice(prefix.length) || "";
 }
 
-function useUtcClock() {
-  const [clock, setClock] = useState("00:00:00 UTC");
-  useEffect(() => {
-    const update = () => setClock(`${new Date().toISOString().slice(11, 19)} UTC`);
-    update();
-    const timer = window.setInterval(update, 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-  return clock;
-}
-
 function AccessGate({ message }) {
   return (
     <section className="gate">
@@ -871,31 +860,10 @@ function WardenWorkspace({ dashboard, request, refresh, reportError, toggleMapRe
   </section>;
 }
 
-function Workspace({ onLogout }) {
-  const clock = useUtcClock();
+function Workspace({ selectedGame }) {
   const [dashboard, setDashboard] = useState(null);
-  const [selectedGame, setSelectedGame] = useState(preferredGame);
-  const explicitGameApplied = useRef(false);
   const [phase, setPhase] = useState("loading");
   const [message, setMessage] = useState("");
-  const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem("tabletop-theme");
-    return ["crt", "simple", "fantasy"].includes(saved) ? saved : "crt";
-  });
-  const [crtStrength, setCrtStrength] = useState(() => {
-    const saved = Number.parseInt(localStorage.getItem("tabletop-crt-strength"), 10);
-    return Number.isFinite(saved) ? Math.max(0, Math.min(100, saved)) : 34;
-  });
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("tabletop-theme", theme);
-  }, [theme]);
-
-  useEffect(() => {
-    document.documentElement.style.setProperty("--crt-strength", String(crtStrength / 100));
-    localStorage.setItem("tabletop-crt-strength", String(crtStrength));
-  }, [crtStrength]);
 
   const request = useCallback(async (path, options = {}) => {
     const { raw = false, ...fetchOptions } = options;
@@ -919,10 +887,6 @@ function Workspace({ onLogout }) {
       const data = await request("/api/dashboard");
       const formFieldActive = document.activeElement?.matches("input, textarea, select");
       if (force || !formFieldActive) setDashboard(data);
-      if (!explicitGameApplied.current) {
-        setSelectedGame(data.campaign.game_system);
-        explicitGameApplied.current = true;
-      }
       setPhase("ready");
       setMessage("");
     } catch (error) {
@@ -942,10 +906,6 @@ function Workspace({ onLogout }) {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  const clearCredential = async () => {
-    try { await request("/api/auth/logout", { method: "POST" }); } finally { onLogout(); }
-  };
-
   const reportError = (error) => setMessage(error?.message || "Terminal write failed.");
   const toggleMapRegion = async (regionId) => {
     if (dashboard?.role !== "warden") return;
@@ -958,22 +918,10 @@ function Workspace({ onLogout }) {
       await refresh(true);
     }
   };
-  const roleLabel = dashboard ? `${dashboard.role} view` : phase === "loading" ? "Establishing uplink" : "Link offline";
-  const selectGame = (game) => {
-    setSelectedGame(game);
-    localStorage.setItem("tabletop-game", game);
-  };
-
   return (
     <>
       <div className="crt-overlay" aria-hidden="true" />
       <div className={`shell${dashboard?.role ? ` ${dashboard.role}-shell` : ""}${dashboard?.campaign.game_system === "dnd" ? " dnd-shell" : ""}`}>
-        <div className="system-bar">
-          <span>{dashboard ? `${dashboard.campaign.name} // ${dashboard.campaign.game_system.toUpperCase()} // ${roleLabel}` : "TABLETOP // LOCAL RELAY"}</span>
-          <span>{clock}</span>
-          <span className="system-link">LINK: <b>{phase === "ready" ? "ENCRYPTED" : "PENDING"}</b><label className="game-picker"><span>GAME</span><select value={selectedGame} aria-label="Game" onChange={(event) => selectGame(event.target.value)}>{GAME_REGISTRY.map((game) => <option value={game.id} key={game.id}>{game.label}</option>)}</select></label>{theme === "crt" && <label className="crt-strength"><span>CRT</span><input type="range" min="0" max="100" value={crtStrength} aria-label="CRT effect strength" onChange={(event) => setCrtStrength(Number(event.target.value))} /><b>{crtStrength}%</b></label>}<label className="theme-picker"><span>DISPLAY</span><select value={theme} aria-label="Display theme" onChange={(event) => setTheme(event.target.value)}><option value="crt">CRT</option><option value="simple">SIMPLE</option><option value="fantasy">FANTASY</option></select></label><button className="credential-clear" type="button" onClick={clearCredential}>Sign out</button></span>
-        </div>
-
         {message && phase === "ready" && <div className="flash" role="status">SYS/WARN // {message}</div>}
 
         {phase === "ready" && dashboard && selectedGame !== dashboard.campaign.game_system ? (
@@ -1054,6 +1002,32 @@ function CampaignHome({ account, reload, signOut, initialMessage = "" }) {
   const [invites, setInvites] = useState([]);
   const [open, setOpen] = useState(false);
   const active = account.campaigns.find((campaign) => campaign.id === account.active_campaign_id);
+  const [selectedGame, setSelectedGame] = useState(preferredGame);
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem("tabletop-theme");
+    return ["crt", "simple", "fantasy"].includes(saved) ? saved : "crt";
+  });
+  const [crtStrength, setCrtStrength] = useState(() => {
+    const saved = Number.parseInt(localStorage.getItem("tabletop-crt-strength"), 10);
+    return Number.isFinite(saved) ? Math.max(0, Math.min(100, saved)) : 34;
+  });
+  useEffect(() => {
+    if (!active?.game_system) return;
+    setSelectedGame(active.game_system);
+    localStorage.setItem("tabletop-game", active.game_system);
+  }, [active?.id, active?.game_system]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("tabletop-theme", theme);
+  }, [theme]);
+  useEffect(() => {
+    document.documentElement.style.setProperty("--crt-strength", String(crtStrength / 100));
+    localStorage.setItem("tabletop-crt-strength", String(crtStrength));
+  }, [crtStrength]);
+  const selectGame = (value) => {
+    setSelectedGame(value);
+    localStorage.setItem("tabletop-game", value);
+  };
   const select = async (campaignId) => {
     await sessionRequest("/api/campaigns/select", { method: "POST", body: JSON.stringify({ campaign_id: Number(campaignId) }) });
     await reload();
@@ -1080,13 +1054,18 @@ function CampaignHome({ account, reload, signOut, initialMessage = "" }) {
   };
   const logout = async () => { try { await sessionRequest("/api/auth/logout", { method: "POST", body: "{}" }); } finally { signOut(); } };
 
-  return <>
+  return <div className={`campaign-home${active?.game_system === "dnd" ? " dnd-campaign-home" : ""}`}>
     <nav className="account-bar" aria-label="Account and campaign">
       <a href="/" className="account-brand">DM Screen</a>
       <div className="account-actions">
         {account.campaigns.length > 0 && <label><span>Campaign</span><select value={account.active_campaign_id || ""} onChange={(event) => select(event.target.value)}>{!account.active_campaign_id && <option value="">Select campaign</option>}{account.campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name} · {campaign.role === "warden" ? "DM" : "Player"}</option>)}</select></label>}
         {active?.role === "warden" && <button type="button" onClick={invite}>Invite player</button>}
         <button type="button" onClick={() => { setInviteUrl(""); setOpen((value) => !value); }}>New campaign</button>
+        {active && <div className="workspace-settings">
+          <label className="game-picker"><span>Game</span><select value={selectedGame} aria-label="Game" onChange={(event) => selectGame(event.target.value)}>{GAME_REGISTRY.map((entry) => <option value={entry.id} key={entry.id}>{entry.label}</option>)}</select></label>
+          {theme === "crt" && <label className="crt-strength"><span>CRT</span><input type="range" min="0" max="100" value={crtStrength} aria-label="CRT effect strength" onChange={(event) => setCrtStrength(Number(event.target.value))} /><b>{crtStrength}%</b></label>}
+          <label className="theme-picker"><span>Display</span><select value={theme} aria-label="Display theme" onChange={(event) => setTheme(event.target.value)}><option value="crt">CRT</option><option value="simple">Simple</option><option value="fantasy">Fantasy</option></select></label>
+        </div>}
         <span>{account.user.global_name || account.user.username}</span>
         <button className="quiet" type="button" onClick={logout}>Sign out</button>
       </div>
@@ -1096,8 +1075,8 @@ function CampaignHome({ account, reload, signOut, initialMessage = "" }) {
         : <form onSubmit={create}><p className="eyebrow">NEW CAMPAIGN</p><h2>Create your table</h2><label><span>Name</span><input required maxLength="100" value={name} onChange={(event) => setName(event.target.value)} placeholder="The Sunless Citadel" /></label><label><span>Game</span><select value={game} onChange={(event) => setGame(event.target.value)}><option value="dnd">D&amp;D</option><option value="mothership">Mothership</option></select></label><button type="submit">Create campaign</button></form>}
       {message && <p className="login-error" role="alert">{message}</p>}
     </section>}
-    {!active ? <main className="empty-campaign"><section><p className="eyebrow">WELCOME ABOARD</p><h1>No campaigns yet</h1><p>Create a D&amp;D or Mothership campaign, or open an invitation from your DM.</p><button type="button" onClick={() => setOpen(true)}>Create your first campaign</button></section></main> : <Workspace onLogout={signOut} />}
-  </>;
+    {!active ? <main className="empty-campaign"><section><p className="eyebrow">WELCOME ABOARD</p><h1>No campaigns yet</h1><p>Create a D&amp;D or Mothership campaign, or open an invitation from your DM.</p><button type="button" onClick={() => setOpen(true)}>Create your first campaign</button></section></main> : <Workspace selectedGame={selectedGame} />}
+  </div>;
 }
 
 export default function App() {
