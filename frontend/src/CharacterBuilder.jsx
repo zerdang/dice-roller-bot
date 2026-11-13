@@ -8,16 +8,13 @@ const COST = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
 const title = text => text.replace(/\b\w/g, c => c.toUpperCase());
 const signed = n => n >= 0 ? `+${n}` : String(n);
 
-function CatalogChoice({ request, draftId, kind, label, selected, onSelect, version, multiple = false }) {
+function CatalogChoice({ request, draftId, kind, label, selected, onSelect, onInspect, multiple = false }) {
   const [query, setQuery] = useState("");
   const [edition, setEdition] = useState("");
   const [offset, setOffset] = useState(0);
   const [result, setResult] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [detail, setDetail] = useState(null);
-  const detailSequence = useRef(0);
-  useEffect(() => () => { detailSequence.current++; }, []);
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -29,21 +26,13 @@ function CatalogChoice({ request, draftId, kind, label, selected, onSelect, vers
     }, 180);
     return () => { active = false; clearTimeout(timer); };
   }, [request, draftId, kind, query, edition, offset]);
-  const inspect = async item => {
-    const seq = ++detailSequence.current;
-    try {
-      const value = await request(`/api/dnd/reference/entries/${item.id}?version=${encodeURIComponent(version)}`);
-      if (seq === detailSequence.current) setDetail(value);
-    } catch (e) { if (seq === detailSequence.current) setError(e.message); }
-  };
   return <section className="builder-choice"><h3>{label}</h3>
     <div className="builder-search"><label>Search {label.toLowerCase()}<input type="search" value={query} onChange={e => { setQuery(e.target.value); setOffset(0); }} placeholder="Search names and descriptions" /></label><label>Rules edition<select value={edition} onChange={e => { setEdition(e.target.value); setOffset(0); }}><option value="">All editions</option><option value="2024">2024</option><option value="2014">2014</option><option value="unspecified">Unspecified</option></select></label></div>
     {error && <p role="alert">{error}</p>}
     <p role="status">{loading ? "Searching…" : `${result.total} choices`}</p>
-    <div className="builder-options" aria-busy={loading}>{result.items.map(item => { const picked = multiple ? selected.includes(item.id) : selected === item.id; return <article className={picked ? "selected" : ""} key={item.id}><div><strong>{item.name}</strong><small>{item.source} · {item.edition === "unspecified" ? "Edition unspecified" : item.edition}{item.warnings.length > 0 ? " · Requires source review" : ""}</small></div><button type="button" onClick={() => inspect(item)} aria-label={`Details for ${item.name} from ${item.source}`}>Details</button><button type="button" aria-pressed={picked} onClick={() => onSelect(item.id)} aria-label={`${picked && multiple ? "Remove" : "Select"} ${item.name} from ${item.source}`}>{picked ? multiple ? "Remove" : "Selected" : "Select"}</button></article>; })}</div>
+    <div className="builder-options" aria-busy={loading}>{result.items.map(item => { const picked = multiple ? selected.includes(item.id) : selected === item.id; return <article className={picked ? "selected" : ""} key={item.id}><div><strong>{item.name}</strong><small>{item.source} · {item.edition === "unspecified" ? "Edition unspecified" : item.edition}{item.warnings.length > 0 ? " · Requires source review" : ""}</small></div><button type="button" onClick={event => onInspect(item, event.currentTarget)} aria-label={`Details for ${item.name} from ${item.source}`}>Details</button><button type="button" aria-pressed={picked} onClick={() => onSelect(item.id)} aria-label={`${picked && multiple ? "Remove" : "Select"} ${item.name} from ${item.source}`}>{picked ? multiple ? "Remove" : "Selected" : "Select"}</button></article>; })}</div>
     {!loading && !result.total && <p>No matching choices are enabled in this campaign.</p>}
     <nav className="builder-pagination" aria-label={`${label} pages`}><button disabled={loading || offset === 0} onClick={() => setOffset(Math.max(0, offset - 30))}>Previous</button><span>Page {Math.floor(offset / 30) + 1}</span><button disabled={loading || offset + 30 >= result.total} onClick={() => setOffset(offset + 30)}>Next</button></nav>
-    {detail && <section className="builder-source" aria-label={`${detail.name} details`}><header><h4>{detail.name} · {detail.source}</h4><button onClick={() => setDetail(null)}>Close details</button></header>{detail.warnings.map((warning, i) => <p key={i}>{warning}</p>)}<div>{detail.text || "Consult the source for this option's complete traits."}</div></section>}
   </section>;
 }
 
@@ -61,6 +50,8 @@ function DraftEditor({ initial, request, onBack, isWarden, onFinalized }) {
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [portraitUrl, setPortraitUrl] = useState(initial.portrait_url || "");
   const [portraitBusy, setPortraitBusy] = useState(false);
+  const [detailPanel, setDetailPanel] = useState(null);
+  const [detailExpanded, setDetailExpanded] = useState(false);
   const revision = useRef(initial.revision);
   const queue = useRef(Promise.resolve());
   const blocked = useRef(false);
@@ -68,11 +59,28 @@ function DraftEditor({ initial, request, onBack, isWarden, onFinalized }) {
   const current = useRef(draft);
   const savedRef = useRef(saved);
   const dialog = useRef(null);
+  const detailSequence = useRef(0);
+  const detailHeading = useRef(null);
+  const detailLauncher = useRef(null);
+  const detailScroll = useRef(null);
   const latest = JSON.stringify(draft);
   current.current = draft;
   const dirty = latest !== saved;
   useEffect(() => { alive.current = true; dialog.current?.focus(); return () => { alive.current = false; }; }, []);
+  useEffect(() => { detailSequence.current++; setDetailPanel(null); }, [step]);
+  useEffect(() => { if (detailPanel && !detailPanel.loading) { detailScroll.current?.scrollTo(0, 0); detailHeading.current?.focus(); } }, [detailPanel]);
   const apply = (key, value) => setDraft(old => ({ ...old, [key]: value }));
+  const inspect = async (item, launcher) => {
+    const sequence = ++detailSequence.current;
+    detailLauncher.current = launcher;
+    setDetailExpanded(false);
+    setDetailPanel({ item, loading: true, entry: null, error: "" });
+    try {
+      const entry = await request(`/api/dnd/reference/entries/${item.id}?version=${encodeURIComponent(initial.version)}`);
+      if (sequence === detailSequence.current) setDetailPanel({ item, loading: false, entry, error: "" });
+    } catch (error) { if (sequence === detailSequence.current) setDetailPanel({ item, loading: false, entry: null, error: error.message }); }
+  };
+  const closeDetail = () => { detailSequence.current++; setDetailPanel(null); setDetailExpanded(false); requestAnimationFrame(() => detailLauncher.current?.focus()); };
   const saveSnapshot = snapshot => {
     queue.current = queue.current.then(async () => {
       if (blocked.current) throw new Error("Reload the draft to resolve the save error.");
@@ -175,7 +183,7 @@ function DraftEditor({ initial, request, onBack, isWarden, onFinalized }) {
   };
   const trap = e => {
     e.stopPropagation();
-    if (e.key === "Escape") { e.preventDefault(); close(); }
+    if (e.key === "Escape") { e.preventDefault(); if (detailPanel) closeDetail(); else close(); }
     if (e.key === "Tab") {
       const focusable = [...dialog.current.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')].filter(el => el.offsetParent !== null);
       const first = focusable[0], last = focusable.at(-1);
@@ -187,17 +195,17 @@ function DraftEditor({ initial, request, onBack, isWarden, onFinalized }) {
   const skillOptions = preview.class_skill_options;
   const displayedScores = draft.method === "rolled" ? preview.roll_pool?.totals || [] : ARRAY;
   if (finalizedId) return <section className="creation-dialog creation-drafts" role="dialog" aria-modal="true" aria-label="Approved character draft" ref={dialog} tabIndex={-1} onKeyDown={trap}><header className="creation-header"><h2>{draft.name}</h2><button onClick={onBack}>Back to drafts</button></header><main className="creation-main"><p role="status">This draft was approved as character #{finalizedId}. Open the character sheet from the party to use it.</p></main></section>;
-  return <section className="creation-dialog" role="dialog" aria-modal="true" aria-label="Character draft builder" ref={dialog} tabIndex={-1} onKeyDown={trap}>
-    <header className="creation-header"><div><h2>Build your character</h2><p>Level 1 · Revised 2024 rules · Saved separately from your live sheet</p></div><span role="status">{status}</span><button onClick={reload}>Reload saved draft</button><button onClick={close}>Save & close</button></header>
+  return <section className={`creation-dialog${detailPanel ? " detail-open" : ""}`} role="dialog" aria-modal="true" aria-label="Character draft builder" ref={dialog} tabIndex={-1} onKeyDown={trap}>
+    <header className="creation-header"><div><h2>Build your character</h2><p>Level 1 · Revised 2024 rules · Saved separately from your live sheet</p></div><span role="status">{status}</span><button className="creation-reload" onClick={reload}>Reload saved draft</button><button onClick={close}>Save & close</button></header>
     {error && <div className="creation-error" role="alert">{error} Your changes remain in this window. Reload to resolve a conflict.</div>}
     <nav className="creation-steps" aria-label="Character creation steps">{STEPS.map(([id, label]) => <button key={id} aria-current={step === id ? "step" : undefined} onClick={() => setStep(id)}>{label}</button>)}</nav>
     <div className="creation-name"><label>Character name<input maxLength={100} value={draft.name} onChange={e => apply("name", e.target.value)} /></label></div>
-    <div className="creation-body"><main className="creation-main">
-      {step === "class" && <CatalogChoice request={request} draftId={initial.id} version={initial.version} kind="class" label="Class" selected={draft.class_id} onSelect={id => setDraft(old => ({ ...old, class_id: id, class_skills: [], equipment: { ...old.equipment, class: "" } }))} />}
+    <div className={`creation-body${detailPanel ? " has-detail" : ""}${detailExpanded ? " expanded" : ""}`}><main className="creation-main">
+      {step === "class" && <CatalogChoice request={request} draftId={initial.id} onInspect={inspect} kind="class" label="Class" selected={draft.class_id} onSelect={id => setDraft(old => ({ ...old, class_id: id, class_skills: [], equipment: { ...old.equipment, class: "" } }))} />}
       {step === "origin" && <>
-        <CatalogChoice request={request} draftId={initial.id} version={initial.version} kind="race" label="Species" selected={draft.species_id} onSelect={id => setDraft(old => ({ ...old, species_id: id, lineage_id: "" }))} />
-        <details><summary>Optional lineage / subrace</summary><p>Select the matching parent species first. Some species describe ancestry choices inside their traits instead.</p><button onClick={() => apply("lineage_id", "")}>Clear lineage</button><CatalogChoice request={request} draftId={initial.id} version={initial.version} kind="subrace" label="Lineage" selected={draft.lineage_id} onSelect={id => apply("lineage_id", id)} /></details>
-        <CatalogChoice request={request} draftId={initial.id} version={initial.version} kind="background" label="Background" selected={draft.background_id} onSelect={id => setDraft(old => ({ ...old, background_id: id, boosts: Object.fromEntries(ABILITIES.map(a => [a, 0])), equipment: { ...old.equipment, background: "" } }))} />
+        <CatalogChoice request={request} draftId={initial.id} onInspect={inspect} kind="race" label="Species" selected={draft.species_id} onSelect={id => setDraft(old => ({ ...old, species_id: id, lineage_id: "" }))} />
+        <details><summary>Optional lineage / subrace</summary><p>Select the matching parent species first. Some species describe ancestry choices inside their traits instead.</p><button onClick={() => apply("lineage_id", "")}>Clear lineage</button><CatalogChoice request={request} draftId={initial.id} onInspect={inspect} kind="subrace" label="Lineage" selected={draft.lineage_id} onSelect={id => apply("lineage_id", id)} /></details>
+        <CatalogChoice request={request} draftId={initial.id} onInspect={inspect} kind="background" label="Background" selected={draft.background_id} onSelect={id => setDraft(old => ({ ...old, background_id: id, boosts: Object.fromEntries(ABILITIES.map(a => [a, 0])), equipment: { ...old.equipment, background: "" } }))} />
       </>}
       {step === "abilities" && <section><h3>Assign ability scores</h3><label>Generation method<select value={draft.method} onChange={e => changeMethod(e.target.value)}>{Object.entries(METHODS).map(([key, label]) => <option key={key} value={key} disabled={!preview.policy.methods.includes(key)}>{label}{!preview.policy.methods.includes(key) ? " — disabled by DM" : ""}</option>)}</select></label>
         {isWarden && <details><summary>Campaign ability methods</summary><p>Recorded rolls are reused across a person's campaign drafts. Manual entry is available only when enabled here.</p>{settings ? <><div className="creation-checks">{Object.entries(METHODS).map(([method, label]) => <label key={method}><input type="checkbox" checked={settings.methods.includes(method)} onChange={e => setSettings(old => ({ ...old, methods: e.target.checked ? [...old.methods, method] : old.methods.filter(m => m !== method) }))} />{label}</label>)}</div><button disabled={policyBusy || !settings.methods.length} onClick={policySave}>Save campaign settings</button><button disabled={policyBusy} onClick={() => setSettings(null)}>Cancel</button></> : <button onClick={() => setSettings({ ...preview.policy })}>Edit allowed methods</button>}</details>}
@@ -211,12 +219,15 @@ function DraftEditor({ initial, request, onBack, isWarden, onFinalized }) {
         })}</div>
       </section>}
       {step === "training" && <section><h3>Skill proficiencies</h3><p>Choose {preview.class_skill_count} class skills: {draft.class_skills.length} selected.</p><div className="creation-checks">{skillOptions.map(skill => <label key={skill}><input type="checkbox" checked={draft.class_skills.includes(skill)} onChange={e => apply("class_skills", e.target.checked ? [...draft.class_skills, skill] : draft.class_skills.filter(s => s !== skill))} />{title(skill)}{preview.skill_grants[skill]?.some(origin => origin !== "class") && <small>Also granted by {preview.skill_grants[skill].filter(origin => origin !== "class").join(", ")}</small>}</label>)}</div><h4>Granted proficiencies</h4>{Object.entries(preview.skill_grants).map(([skill, sources]) => <p key={skill}>{title(skill)} — {sources.join(", ")}</p>)}{!skillOptions.length && <p>Consult your class details for any choices that need manual review.</p>}</section>}
-      {step === "features" && <section><h3>Level-one features and origin choices</h3><p>Features listed by the selected class are granted at level one. Read the class and origin details for decisions within each feature.</p>{preview.level_one_features?.length ? <ul>{preview.level_one_features.map((feature, i) => <li key={i}>{feature.name} · {feature.source}</li>)}</ul> : <p>No level-one feature references found for this class.</p>}<h4>Languages</h4><p>Choose two different standard languages in addition to Common. Selected: {preview.languages?.map(item => item.name).join(", ") || "None"}.</p><CatalogChoice request={request} draftId={initial.id} version={initial.version} kind="language" label="Language catalog" multiple selected={draft.language_ids || []} onSelect={id => apply("language_ids", draft.language_ids?.includes(id) ? draft.language_ids.filter(value => value !== id) : [...(draft.language_ids || []), id])} /><h4>Origin feats</h4><p>Choose {preview.feat_choice_count || 0} additional Origin feats. Granted and selected: {preview.feats?.map(item => item.name).join(", ") || "None"}.</p>{preview.feat_choice_count > 0 && <CatalogChoice request={request} draftId={initial.id} version={initial.version} kind="feat" label="Feat catalog" multiple selected={draft.feat_ids || []} onSelect={id => apply("feat_ids", draft.feat_ids?.includes(id) ? draft.feat_ids.filter(value => value !== id) : [...(draft.feat_ids || []), id])} />}<label>Feature, feat, and language selections<textarea rows={6} maxLength={6000} value={draft.feature_choices || ""} onChange={e => apply("feature_choices", e.target.value)} placeholder="Record your choices and their source, including any feat or language granted by your origin." /></label><p>These selections are retained for DM review. Their rules are not automatically applied to the sheet yet.</p></section>}
+      {step === "features" && <section><h3>Level-one features and origin choices</h3><p>Features listed by the selected class are granted at level one. Read the class and origin details for decisions within each feature.</p>{preview.level_one_features?.length ? <ul>{preview.level_one_features.map((feature, i) => <li key={i}>{feature.name} · {feature.source}</li>)}</ul> : <p>No level-one feature references found for this class.</p>}<h4>Languages</h4><p>Choose two different standard languages in addition to Common. Selected: {preview.languages?.map(item => item.name).join(", ") || "None"}.</p><CatalogChoice request={request} draftId={initial.id} onInspect={inspect} kind="language" label="Language catalog" multiple selected={draft.language_ids || []} onSelect={id => apply("language_ids", draft.language_ids?.includes(id) ? draft.language_ids.filter(value => value !== id) : [...(draft.language_ids || []), id])} /><h4>Origin feats</h4><p>Choose {preview.feat_choice_count || 0} additional Origin feats. Granted and selected: {preview.feats?.map(item => item.name).join(", ") || "None"}.</p>{preview.feat_choice_count > 0 && <CatalogChoice request={request} draftId={initial.id} onInspect={inspect} kind="feat" label="Feat catalog" multiple selected={draft.feat_ids || []} onSelect={id => apply("feat_ids", draft.feat_ids?.includes(id) ? draft.feat_ids.filter(value => value !== id) : [...(draft.feat_ids || []), id])} />}<label>Feature, feat, and language selections<textarea rows={6} maxLength={6000} value={draft.feature_choices || ""} onChange={e => apply("feature_choices", e.target.value)} placeholder="Record your choices and their source, including any feat or language granted by your origin." /></label><p>These selections are retained for DM review. Their rules are not automatically applied to the sheet yet.</p></section>}
       {step === "equipment" && <section><h3>Starting equipment</h3><p>Choose the class and background packages independently. Gold amounts and package items come from the selected source.</p>{["class", "background"].map(source => <fieldset key={source}><legend>{title(source)} equipment</legend>{preview.equipment_options?.[source]?.length ? preview.equipment_options[source].map(option => <label className="creation-package" key={option.id}><input type="radio" name={`${source}-equipment`} checked={draft.equipment?.[source] === option.id} onChange={() => apply("equipment", { ...draft.equipment, [source]: option.id })} /><strong>Option {option.id}</strong><span>{option.label}</span></label>) : <p>Consult the {source} source details to determine starting equipment.</p>}</fieldset>)}</section>}
-      {step === "spells" && <section><h3>Spells</h3><p>At level one, this class lists {preview.spell_limits?.cantrips || 0} cantrips and {preview.spell_limits?.level_one || 0} known or prepared spells. Select catalog spells below, then check their class eligibility in the source details.</p><h4>Selected spells</h4>{preview.spells?.length ? <ul>{preview.spells.map(spell => <li key={spell.id}>{spell.name} · {spell.source} · {spell.level === 0 ? "Cantrip" : `Level ${spell.level}`}</li>)}</ul> : <p>None selected.</p>}<label>Additional spell decisions<textarea rows={4} maxLength={6000} value={draft.spell_choices || ""} onChange={e => apply("spell_choices", e.target.value)} placeholder="Record origin-granted spells, preparation choices, and any class spell-list source." /></label><CatalogChoice request={request} draftId={initial.id} version={initial.version} kind="spell" label="Spell catalog" multiple selected={draft.spell_ids || []} onSelect={id => apply("spell_ids", draft.spell_ids?.includes(id) ? draft.spell_ids.filter(value => value !== id) : [...(draft.spell_ids || []), id])} /><p>Class spell eligibility still requires DM review.</p></section>}
+      {step === "spells" && <section><h3>Spells</h3><p>At level one, this class lists {preview.spell_limits?.cantrips || 0} cantrips and {preview.spell_limits?.level_one || 0} known or prepared spells. Select catalog spells below, then check their class eligibility in the source details.</p><h4>Selected spells</h4>{preview.spells?.length ? <ul>{preview.spells.map(spell => <li key={spell.id}>{spell.name} · {spell.source} · {spell.level === 0 ? "Cantrip" : `Level ${spell.level}`}</li>)}</ul> : <p>None selected.</p>}<label>Additional spell decisions<textarea rows={4} maxLength={6000} value={draft.spell_choices || ""} onChange={e => apply("spell_choices", e.target.value)} placeholder="Record origin-granted spells, preparation choices, and any class spell-list source." /></label><CatalogChoice request={request} draftId={initial.id} onInspect={inspect} kind="spell" label="Spell catalog" multiple selected={draft.spell_ids || []} onSelect={id => apply("spell_ids", draft.spell_ids?.includes(id) ? draft.spell_ids.filter(value => value !== id) : [...(draft.spell_ids || []), id])} /><p>Class spell eligibility still requires DM review.</p></section>}
       {step === "portrait" && <section><h3>Character portrait</h3><p>Upload a PNG, JPEG, or WebP image up to 3 MB. The portrait is centered and cropped to a square for the character sheet.</p>{portraitUrl && <img className="creation-portrait-preview" src={portraitUrl} alt={`${draft.name || "Character"} portrait preview`} />}<label>Choose portrait image<input type="file" accept="image/png,image/jpeg,image/webp" disabled={portraitBusy} onChange={e => uploadPortrait(e.target.files?.[0])} /></label>{portraitBusy && <p role="status">Uploading portrait…</p>}<p>A portrait is optional; you can complete the draft without one.</p></section>}
       {step === "review" && <section><h3>Review your draft</h3><p>Save your choices, then ask the DM to review source-dependent details and approve the sheet.</p><label>Build notes / choices to review<textarea rows={6} maxLength={6000} value={draft.notes} onChange={e => apply("notes", e.target.value)} placeholder="Record any remaining decisions you want to discuss with your DM." /></label><h4>Needs attention</h4>{preview.errors.map((item, i) => <p key={i}><button onClick={() => setStep(item.step)}>{item.message}</button></p>)}{!preview.errors.length && <p>Required structured choices are complete.</p>}<h4>DM review</h4><ul>{preview.review.map((message, i) => <li key={i}>{message}</li>)}</ul>{finalizedId ? <p role="status">Approved as character #{finalizedId}. The sheet is available in the party.</p> : isWarden ? <button disabled={approvalBusy || preview.errors.length > 0} onClick={finalize}>{approvalBusy ? "Approving…" : initial.target ? `Approve and replace ${initial.target.name}'s sheet` : "Approve and create character"}</button> : <p>When your choices are complete, your DM can approve this draft.</p>}<button onClick={() => saveSnapshot(JSON.stringify(current.current)).catch(() => {})}>Save draft</button></section>}
-    </main><details className="creation-summary" aria-label="Saved draft summary" aria-busy={dirty}><summary>Character summary</summary>{dirty && <p>Updating after save…</p>}{["class", "species", "background", ...(draft.lineage_id ? ["lineage"] : [])].map(key => <p key={key}><b>{title(key)}</b><span>{selectedLabel(key)}</span></p>)}<h4>Ability scores</h4>{ABILITIES.map(a => <p key={a}><b>{title(a)}</b><span>{preview.scores[a]} ({signed(preview.modifiers[a])})</span></p>)}<p>{preview.errors.length} foundation choices need attention.</p></details></div>
+    </main><details className="creation-summary" aria-label="Saved draft summary" aria-busy={dirty}><summary>Character summary</summary>{dirty && <p>Updating after save…</p>}{["class", "species", "background", ...(draft.lineage_id ? ["lineage"] : [])].map(key => <p key={key}><b>{title(key)}</b><span>{selectedLabel(key)}</span></p>)}<h4>Ability scores</h4>{ABILITIES.map(a => <p key={a}><b>{title(a)}</b><span>{preview.scores[a]} ({signed(preview.modifiers[a])})</span></p>)}<p>{preview.errors.length} foundation choices need attention.</p></details>{detailPanel && <aside className="builder-source" aria-label={`${detailPanel.item.name} details`}>
+      <header><div><small>Reference details</small><h3 ref={detailHeading} tabIndex={-1}>{detailPanel.item.name}</h3><p>{detailPanel.item.source} · {detailPanel.item.edition === "unspecified" ? "Edition unspecified" : detailPanel.item.edition}</p></div><div className="builder-source-actions"><button type="button" className="builder-source-expand" onClick={() => setDetailExpanded(value => !value)}>{detailExpanded ? "Show choices" : "Expand"}</button><button type="button" onClick={closeDetail}>Close details</button></div></header>
+      <div className="builder-source-scroll" ref={detailScroll} aria-live="polite">{detailPanel.loading ? <p>Loading details…</p> : detailPanel.error ? <p role="alert">{detailPanel.error}</p> : <>{detailPanel.entry.warnings?.map((warning, index) => <p className="builder-source-warning" key={index}>{warning}</p>)}<div>{detailPanel.entry.text || "Consult the source for this option's complete traits."}</div></>}</div>
+    </aside>}</div>
     <footer className="creation-footer"><button disabled={step === "class"} onClick={() => setStep(STEPS[Math.max(0, STEPS.findIndex(([id]) => id === step) - 1)][0])}>Previous step</button><button disabled={step === "review"} onClick={() => setStep(STEPS[Math.min(STEPS.length - 1, STEPS.findIndex(([id]) => id === step) + 1)][0])}>Next step</button></footer>
   </section>;
 }
