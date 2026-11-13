@@ -1730,6 +1730,77 @@ html[data-theme="simple"] .map-stage, html[data-theme="fantasy"] .map-stage { te
   .phase-two .inline-roll > span { grid-column: 1 / -1; }
 }
 
+/* Character sheets respond to their dialog width, not the browser viewport behind them. */
+.character-sheet.phase-two {
+  container-name: character-sheet;
+  container-type: inline-size;
+}
+.phase-two .ability-strip { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.phase-two .ability-strip article { grid-column: span 2; min-width: 0; }
+.phase-two .ability-strip article:nth-last-child(-n+4) { grid-column: span 3; }
+.phase-two .sheet-body { grid-template-columns: minmax(210px, 23%) minmax(250px, 25%) minmax(420px, 52%); }
+.phase-two .sheet-left,
+.phase-two .sheet-skills,
+.phase-two .sheet-main { min-width: 0; }
+.phase-two .skill-row { grid-template-columns: 24px 34px minmax(0, 1fr) auto; }
+.phase-two .skill-row > span:nth-of-type(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phase-two .sheet-roll-control { max-width: 100%; min-width: 0; }
+.phase-two .sheet-roll { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phase-two .roll-options {
+  display: inline-grid;
+  width: 34px;
+  min-width: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  padding: 4px;
+}
+.phase-two .roll-options svg { width: 18px; height: 18px; fill: currentColor; }
+.phase-two .sheet-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+  overflow: visible;
+}
+.phase-two .sheet-tabs button { min-width: 0; white-space: normal; }
+
+@container character-sheet (max-width: 1100px) {
+  .phase-two .ability-strip article { grid-column: span 4; }
+  .phase-two .ability-strip article:nth-last-child(-n+4) { grid-column: span 3; }
+  .phase-two .sheet-body {
+    display: grid;
+    grid-template-columns: minmax(280px, 38%) minmax(0, 62%);
+  }
+  .phase-two .sheet-left { grid-column: 1; grid-row: 1; }
+  .phase-two .sheet-skills { grid-column: 1; grid-row: 2; }
+  .phase-two .sheet-main { grid-column: 2; grid-row: 1 / span 2; }
+  .phase-two .combat-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .phase-two .section-editor { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@container character-sheet (max-width: 780px) {
+  .phase-two .sheet-header { flex-wrap: wrap; }
+  .phase-two .sheet-header > div:nth-child(2) { width: calc(100% - 65px); }
+  .phase-two .sheet-header .save-status { margin-left: auto; }
+  .phase-two .ability-strip article,
+  .phase-two .ability-strip article:nth-last-child(-n+4) { grid-column: span 6; }
+  .phase-two .sheet-body { display: block; }
+  .phase-two .sheet-left,
+  .phase-two .sheet-skills,
+  .phase-two .sheet-main { display: block; overflow: visible; border-right: 0; }
+  .phase-two .sheet-main { min-height: 0; }
+  .phase-two .sheet-tab-panel { min-height: 320px; }
+  .phase-two .section-editor { grid-template-columns: 1fr; }
+  .phase-two .section-editor .sheet-section-heading { grid-column: auto; }
+}
+
+@container character-sheet (max-width: 480px) {
+  .phase-two .ability-strip article,
+  .phase-two .ability-strip article:nth-last-child(-n+4) { grid-column: span 12; }
+  .phase-two .combat-summary { grid-template-columns: 1fr; }
+  .phase-two .sheet-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .phase-two .action-card { grid-template-columns: 1fr; }
+  .phase-two .action-card > div { grid-column: 1 / -1; }
+}
+
 /* D&D owns the full viewport; legacy shell and theme frames must not inset it. */
 html body .shell.dnd-shell {
   width: 100%;
