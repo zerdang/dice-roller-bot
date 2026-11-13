@@ -74,7 +74,7 @@ class CharacterBuilderApi:
             offset = int(request.query.get("offset", 0))
         except ValueError:
             raise web.HTTPBadRequest(text="Invalid page offset")
-        return await self.call(self.store.options, auth, request.match_info["draft_id"], request.query.get("kind", "class"), request.query.get("q", ""), request.query.get("source", ""), request.query.get("edition", ""), offset)
+        return await self.call(self.store.options, auth, request.match_info["draft_id"], request.query.get("kind", "class"), request.query.get("q", ""), request.query.get("source", ""), request.query.get("edition", ""), offset, request.query.get("level", ""), request.query.get("school", ""))
 
     async def finalize(self, request):
         auth = self.auth(request)

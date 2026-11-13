@@ -21,7 +21,10 @@ def catalog():
     ], "race": [{"name": "Example Folk", "source": "XPHB", "speed": 30},
                 {"name": "Human", "source": "XPHB", "feats": [{"anyFromCategory": {"category": ["O"], "count": 1}}]}],
         "subrace": [{"name": "Example Lineage", "source": "TEST", "raceName": "Example Folk", "raceSource": "XPHB"}],
-        "spell": [{"name": "Sample Spark", "source": "XPHB", "level": 0}, {"name": "Sample Shield", "source": "XPHB", "level": 1},
+        "spell": [{"name": "Sample Spark", "source": "XPHB", "level": 0},
+                  {"name": "Sample Shield", "source": "XPHB", "level": 1, "school": "A",
+                   "time": [{"number": 1, "unit": "reaction"}], "range": {"type": "self"},
+                   "components": {"v": True, "s": True}, "duration": [{"type": "timed", "duration": {"amount": 1, "type": "round"}}]},
                   {"name": "Sample Blast", "source": "XPHB", "level": 3}],
         "language": [{"name": "Elvish", "source": "XPHB", "type": "standard"}, {"name": "Dwarvish", "source": "XPHB", "type": "standard"}],
         "feat": [{"name": "Sample Origin Feat", "source": "XPHB", "category": "O"},
@@ -105,6 +108,19 @@ class CharacterBuilderTests(unittest.TestCase):
         self.assertEqual([], self.evaluate(draft)["errors"])
         self.store.set_policy(self.dm, ["TEST"])
         self.assertTrue(any(e["step"] == "spells" for e in self.evaluate(draft)["errors"]))
+
+    def test_spell_options_filter_by_level_and_school_with_visible_metadata(self):
+        result = self.store.options(self.player, self.created["id"], "spell", level="1", school="A")
+        self.assertEqual(1, result["total"])
+        spell = result["items"][0]
+        self.assertEqual("Sample Shield", spell["name"])
+        self.assertEqual(1, spell["metadata"]["level"])
+        self.assertEqual("Abjuration", spell["metadata"]["school"])
+        self.assertEqual("1 reaction", spell["metadata"]["casting_time"])
+        self.assertEqual("V, S", spell["metadata"]["components"])
+        detail = self.store.detail(self.player, spell["id"], self.version)
+        self.assertEqual(spell["metadata"], detail["metadata"])
+        self.assertEqual(0, self.store.options(self.player, self.created["id"], "spell", level="0", school="A")["total"])
 
     def test_dm_finalization_is_atomic_retry_safe_and_preserves_prior_sheet(self):
         CompanionStore(self.store.path)
