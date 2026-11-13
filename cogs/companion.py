@@ -16,6 +16,10 @@ from discord.ext import commands
 from functions.companion import CompanionStore
 from functions.battlemap import BattlemapStore
 from functions.dnd import DndError, DndStore
+from functions.reference import ReferenceStore
+from cogs.reference_api import ReferenceApi
+from cogs.character_builder_api import CharacterBuilderApi
+from functions.character_builder import CharacterBuilderStore
 from functions.web_auth import AuthError, WebAuthStore
 from cogs.battlemap_api import BattlemapApi
 from functions.config import (
@@ -38,6 +42,8 @@ class Companion(commands.Cog):
         self.store = CompanionStore(db_path)
         self.battlemap = BattlemapStore(db_path, asset_root)
         self.dnd = DndStore(db_path)
+        self.reference = ReferenceStore(db_path)
+        self.builder = CharacterBuilderStore(db_path)
         self.web_auth = WebAuthStore(db_path, session_ttl_seconds)
         config = oauth_config or {}
         self.discord_client_id = config.get("client_id", discord_client_id)
@@ -96,6 +102,8 @@ class Companion(commands.Cog):
         app.router.add_patch("/api/items/{item_id}", self.patch_item)
         app.router.add_delete("/api/items/{item_id}", self.delete_item)
         BattlemapApi(self.battlemap, self.auth).register(app)
+        ReferenceApi(self.reference, self.auth).register(app)
+        CharacterBuilderApi(self.builder, self.auth).register(app)
         return app
 
     async def patch_dnd_character(self, request: web.Request) -> web.Response:

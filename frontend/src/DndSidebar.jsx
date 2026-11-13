@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import ReferenceBrowser from "./ReferenceBrowser";
+import CharacterBuilder from "./CharacterBuilder";
 
 const operationId = () => crypto.randomUUID();
 const dice = [4, 6, 8, 10, 12, 20, 100];
@@ -155,6 +157,8 @@ function QuickInspect({ card, activeName, onBack, onOpenSheet }) {
 
 function SidebarIcon({ name }) {
   const shapes = {
+    builder: <><path d="M4 4h11v16H4zM8 8h3M8 12h3M17 8v8M13 12h8" /></>,
+    reference: <><path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1z" /><path d="M12 5v15" /></>,
     expand: <><path d="M9 6l6 6-6 6" /><path d="M4 4v16" /></>,
     collapse: <><path d="M15 6l-6 6 6 6" /><path d="M20 4v16" /></>,
     character: <><circle cx="12" cy="8" r="3.5" /><path d="M5.5 21c.7-4.5 2.8-6.5 6.5-6.5s5.8 2 6.5 6.5" /></>,
@@ -171,18 +175,19 @@ export default function DndSidebar({ dashboard, cards, roster, rolls, audience, 
   const storageKey = `dnd-sidebar:${dashboard.campaign?.id || "campaign"}`;
   const saved = (() => { try { return JSON.parse(localStorage.getItem(storageKey) || "{}"); } catch { return {}; } })();
   const isWarden = dashboard.role === "warden";
-  const tabs = isWarden ? ["log", "party", "scenes", "selection"] : ["character", "party", "log"];
+  const tabs = isWarden ? ["log", "party", "scenes", "reference", "selection"] : ["character", "party", "log", "reference"];
   const fallbackTab = isWarden ? "party" : "character";
   const savedWidth = Number(saved.width);
   const [width, setWidth] = useState(Number.isFinite(savedWidth) ? Math.max(340, Math.min(520, savedWidth)) : 400);
   const [tab, setTab] = useState(tabs.includes(saved.tab) ? saved.tab : fallbackTab);
   const [collapsed, setCollapsed] = useState(Boolean(saved.collapsed));
   const [quickCardId, setQuickCardId] = useState(null);
+  const [builderOpen, setBuilderOpen] = useState(false);
   const dragRef = useRef(null);
   useEffect(() => { localStorage.setItem(storageKey, JSON.stringify({ tab, collapsed, width })); }, [tab, collapsed, width, storageKey]);
   useEffect(() => { const move = (event) => { if (dragRef.current) setWidth(Math.max(340, Math.min(520, dragRef.current.width + dragRef.current.x - event.clientX))); }; const up = () => { dragRef.current = null; document.body.classList.remove("resizing-dnd-dock"); }; window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); }; }, []);
   const choose = (next) => { setTab(next); setCollapsed(false); };
-  const labels = { character: "My Character", party: "Party", log: "Game Log", scenes: "Scenes", selection: "Selection" };
+  const labels = { character: "My Character", party: "Party", log: "Game Log", scenes: "Scenes", reference: "Reference", selection: "Selection" };
   const activeName = dashboard.turn_order?.[0]?.name || "";
   const quickCard = roster.find((card) => card.id === quickCardId);
   return <aside className={`table-sidebar${collapsed ? " collapsed" : ""}`} style={{ width: collapsed ? 64 : width }}>
@@ -190,14 +195,17 @@ export default function DndSidebar({ dashboard, cards, roster, rolls, audience, 
     <nav aria-label="Table sidebar">
       <button type="button" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => setCollapsed(!collapsed)}><SidebarIcon name={collapsed ? "expand" : "collapse"} /></button>
       {tabs.map((name) => <button type="button" className={tab === name ? "active" : ""} aria-label={labels[name]} title={labels[name]} aria-current={tab === name ? "page" : undefined} onClick={() => { choose(name); if (name !== "party") setQuickCardId(null); }} key={name}><SidebarIcon name={name} /></button>)}
+      <button type="button" aria-label="Character creation drafts" title="Character creation drafts" onClick={() => setBuilderOpen(true)}><SidebarIcon name="builder" /></button>
       {!collapsed && <button type="button" className="dock-reset" aria-label="Reset sidebar width" title="Reset sidebar width" onClick={() => setWidth(400)}><SidebarIcon name="reset" /></button>}
     </nav>
     {!collapsed && <div className="sidebar-content">
+      {tab === "reference" && <ReferenceBrowser request={request} isWarden={isWarden} />}
       {tab === "character" && <MyCharacter card={cards[0]} request={request} refresh={refresh} reportError={reportError} onOpenSheet={onOpenSheet} onOpenLog={() => setTab("log")} />}
       {tab === "party" && (quickCard ? <QuickInspect card={quickCard} activeName={activeName} onBack={() => setQuickCardId(null)} onOpenSheet={onOpenSheet} /> : <PartyBrowser roster={roster} role={dashboard.role} activeName={activeName} onOpenSheet={isWarden ? setQuickCardId : onOpenSheet} />)}
       {tab === "log" && <GameLog cards={cards} rolls={rolls} role={dashboard.role} audience={audience} setAudience={setAudience} request={request} refresh={refresh} reportError={reportError} />}
       {tab === "scenes" && <SceneBrowser request={request} reportError={reportError} viewedSceneId={mapContext?.sceneId} />}
       {tab === "selection" && <section className="sidebar-pane selection-pane"><header><div><h2>Selection</h2><p>Contextual scene and token controls</p></div></header><div className="selection-scroll">{selectionPanel}</div></section>}
     </div>}
+    {builderOpen && <CharacterBuilder request={request} isWarden={isWarden} onFinalized={() => refresh(true)} onClose={() => setBuilderOpen(false)} />}
   </aside>;
 }

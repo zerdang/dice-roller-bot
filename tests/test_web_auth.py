@@ -139,6 +139,23 @@ class WebAuthHttpTests(unittest.IsolatedAsyncioTestCase):
                                           headers={"X-CSRF-Token": csrf})
         self.assertEqual(403, response.status)
 
+    async def test_reference_uses_session_campaign_and_csrf(self):
+        self.assertEqual(401, (await self.client.get("/api/dnd/reference")).status)
+        self.service.reference.import_documents("c" * 40, [{"background": [
+            {"name": "Example Origin", "source": "TEST", "entries": ["Example description."]}
+        ]}])
+        csrf = self.login_cookie("1001")
+        created = await self.client.post("/api/campaigns", json={"name": "Reference test", "game_system": "dnd"}, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(201, created.status)
+        found = await self.client.get("/api/dnd/reference?q=Origin")
+        self.assertEqual(200, found.status)
+        self.assertEqual(1, (await found.json())["total"])
+        denied = await self.client.put("/api/dnd/reference/policy", json={"sources": []})
+        self.assertEqual(403, denied.status)
+        updated = await self.client.put("/api/dnd/reference/policy", json={"sources": []}, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(200, updated.status)
+        self.assertEqual(0, (await updated.json())["total"])
+
 
 if __name__ == "__main__":
     unittest.main()
