@@ -1833,3 +1833,68 @@ html body .shell.dnd-shell::after { display: none; }
   .battlemap-empty-with-dock { height: calc(100% - 78px); }
   .chat-roll-row .log-card { max-width: 88%; }
 }
+
+/* Direct-manipulation map controls. The scene grid is an SVG overlay, not a hidden stage background. */
+.map-stage { background-image: none; }
+.map-grid-overlay { pointer-events: none; }
+.map-grid-overlay + .map-annotations { position: relative; }
+.map-stage pattern path {
+  fill: none;
+  stroke: #e8f0e8;
+  stroke-width: 1;
+  opacity: .48;
+  vector-effect: non-scaling-stroke;
+}
+.map-selection-marquee {
+  fill: #55c8bb26;
+  stroke: #8ae5db;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+.token-context-menu {
+  position: absolute;
+  z-index: 50;
+  display: grid;
+  width: min(248px, calc(100% - 16px));
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid #718092;
+  border-radius: 8px;
+  background: #171c23f5;
+  color: var(--dnd-text);
+  box-shadow: 0 12px 36px #000c;
+}
+.token-context-menu > strong {
+  padding: 7px 9px;
+  overflow: hidden;
+  color: #fff;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.token-context-menu > button {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 9px;
+  border: 0;
+  background: transparent;
+  color: var(--dnd-text);
+  text-align: left;
+}
+.token-context-menu > button:hover,
+.token-context-menu > button:focus-visible { background: #2a3541; }
+.token-context-menu > button.danger { color: #ffaaa1; }
+.token-context-menu kbd { color: var(--dnd-muted); font: 10px/1.2 Inter, "Segoe UI", sans-serif; }
+.token-roll-menu {
+  margin-top: 5px;
+  padding: 7px;
+  border-top: 1px solid #465464;
+}
+.token-roll-menu > span { display: block; margin-bottom: 6px; color: #9fe5dd; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.token-roll-menu > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.token-roll-menu button { min-height: 32px; padding: 4px; font-size: 11px; }

@@ -32,3 +32,34 @@ export function conePath(geometry) {
   const last = [x + radius * Math.cos(end), y + radius * Math.sin(end)];
   return `M ${x} ${y} L ${first[0]} ${first[1]} A ${radius} ${radius} 0 ${angle > 180 ? 1 : 0} 1 ${last[0]} ${last[1]} Z`;
 }
+
+export function normalizedRect(start, end) {
+  return {
+    x: Math.min(start.x, end.x),
+    y: Math.min(start.y, end.y),
+    width: Math.abs(end.x - start.x),
+    height: Math.abs(end.y - start.y),
+  };
+}
+
+export function boundsIntersect(first, second) {
+  return first.x <= second.x + second.width && first.x + first.width >= second.x
+    && first.y <= second.y + second.height && first.y + first.height >= second.y;
+}
+
+export function tokenBounds(token, gridSize) {
+  const radius = (Number(gridSize) || 1) * (Number(token.size) || 1) / 2;
+  return { x: token.x - radius, y: token.y - radius, width: radius * 2, height: radius * 2 };
+}
+
+export function annotationBounds(item) {
+  const geometry = item.geometry || {};
+  if (item.kind === "line") {
+    const x = Math.min(geometry.x || 0, geometry.x2 || 0);
+    const y = Math.min(geometry.y || 0, geometry.y2 || 0);
+    return { x: x - 3, y: y - 3, width: Math.abs((geometry.x2 || 0) - (geometry.x || 0)) + 6, height: Math.abs((geometry.y2 || 0) - (geometry.y || 0)) + 6 };
+  }
+  if (item.kind === "rectangle") return { x: geometry.x || 0, y: geometry.y || 0, width: Math.abs(geometry.width || 0), height: Math.abs(geometry.height || 0) };
+  const radius = item.kind === "marker" ? 16 : Math.abs(geometry.radius || 0);
+  return { x: (geometry.x || 0) - radius, y: (geometry.y || 0) - radius, width: radius * 2, height: radius * 2 };
+}
