@@ -2190,9 +2190,61 @@ html body .shell.dnd-shell::after { display: none; }
   .builder-source { grid-column: 1; border-left: 0; }
   .builder-source-expand { display: none; }
 }
-.creation-abilities { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
-.creation-abilities article { padding: 14px; border: 1px solid #526171; border-radius: 7px; background: #26313c; }
-.creation-abilities strong { font-size: 24px; }
+.builder-step-heading { display: flex; flex-direction: row; flex-wrap: wrap; align-items: end; min-height: 0; gap: 12px 24px; padding: 0 0 16px; border-bottom: 1px solid #465464; }
+.builder-step-heading > div { flex: 1 1 360px; }
+.builder-step-heading h3, .builder-step-heading p { margin: 0; }
+.builder-step-heading p { color: #b7c6d5; }
+.builder-step-heading label { flex: 0 1 300px; min-width: 220px; margin: 0; }
+.builder-point-budget { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 10px 0; padding: 8px 14px; border: 1px solid #72d8ca; border-radius: 6px; background: #193b36; }
+.builder-point-budget strong { color: #d4fffa; font-size: 19px; }
+.builder-point-budget.invalid { border-color: #e8b85c; background: #3d3325; }
+.builder-point-budget.invalid strong { color: #ffe1a3; }
+.builder-score-help { margin: 8px 0; }
+.builder-score-help summary { cursor: pointer; color: #dbe7ef; }
+.builder-score-help p { margin: 6px 0 10px; }
+.creation-abilities { display: grid; grid-template-columns: minmax(150px, 1.25fr) minmax(180px, 1fr) minmax(180px, 1fr) minmax(150px, .8fr); gap: 0; margin-top: 12px; border: 1px solid #526171; border-radius: 7px; overflow: hidden; }
+.creation-abilities-head, .creation-abilities article { display: contents; }
+.creation-abilities-head span { padding: 10px 14px; background: #31404b; color: #dbe7ef; font-size: 12px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+.creation-abilities article > * { display: flex; align-items: center; min-width: 0; min-height: 54px; margin: 0; padding: 6px 14px; border-top: 1px solid #526171; background: #26313c; }
+.creation-abilities article:nth-of-type(even) > * { background: #222c36; }
+.creation-abilities h4 { font-size: 18px; }
+.creation-abilities label > span { display: none; }
+.creation-abilities select, .creation-abilities input { min-height: 40px; }
+.creation-abilities .ability-total { gap: 10px; white-space: nowrap; }
+.creation-abilities .ability-total strong { font-size: 24px; }
+.creation-abilities .ability-total span { color: #b7c6d5; font-size: 13px; }
+.builder-review-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; margin-top: 18px; }
+.builder-review-card { min-width: 0; padding: 18px; border: 1px solid #526171; border-radius: 7px; background: #26313c; }
+.builder-review-card h4 { padding-bottom: 10px; border-bottom: 1px solid #526171; }
+.builder-review-card dl { display: grid; gap: 0; margin: 0 0 20px; }
+.builder-review-card dl > div { display: grid; grid-template-columns: minmax(100px, .6fr) minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid #465464; }
+.builder-review-scores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0 0 18px; }
+.builder-review-scores > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 6px; padding: 9px; border: 1px solid #526171; border-radius: 5px; }
+.builder-review-scores span { overflow: hidden; color: #b7c6d5; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.builder-review-scores strong { grid-row: span 2; font-size: 21px; }
+.builder-review-scores small { color: #a9ead9; }
+.builder-review-card dt { color: #b7c6d5; }
+.builder-review-card dd { margin: 0; overflow-wrap: anywhere; }
+.builder-review-card textarea { min-height: 150px; }
+.builder-review-checks { display: grid; align-content: start; gap: 14px; }
+.builder-review-checks ul { margin: 0 0 14px; padding-left: 22px; }
+.builder-review-checks li { margin: 6px 0; }
+.builder-review-issues { list-style: none; padding-left: 0 !important; }
+.builder-review-issues button { width: 100%; text-align: left; }
+.builder-review-ready { color: #a9ead9; }
+@media (max-width: 900px) {
+  .creation-abilities { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; overflow: visible; border: 0; }
+  .creation-abilities-head { display: none; }
+  .creation-abilities article { display: block; padding: 14px; border: 1px solid #526171; border-radius: 7px; background: #26313c; }
+  .creation-abilities article > * { display: block; min-height: 0; padding: 0; border: 0; background: transparent !important; }
+  .creation-abilities article h4 { margin-bottom: 10px; }
+  .creation-abilities article label { margin-bottom: 12px; }
+  .creation-abilities label > span { display: block; margin-bottom: 5px; }
+  .creation-abilities .ability-total { display: flex; }
+  .builder-review-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) { .builder-review-scores { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .creation-abilities { grid-template-columns: minmax(0, 1fr); } }
 .creation-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .creation-checks label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px; border: 1px solid #526171; border-radius: 5px; }
 .creation-checks input { width: 20px; min-height: 20px; }
@@ -2216,14 +2268,14 @@ html body .shell.dnd-shell::after { display: none; }
 }
 @container creation (max-width: 600px) {
   .creation-main, .creation-summary { padding: 14px; }
-  .creation-abilities { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .creation-abilities { grid-template-columns: minmax(0, 1fr); }
   .builder-search, .creation-checks { grid-template-columns: minmax(0, 1fr); }
   .builder-options article { flex-wrap: wrap; }
   .builder-options article > div { flex-basis: 100%; }
 }
 @media (max-width: 600px) {
   .creation-main, .creation-summary { padding: 14px; }
-  .creation-abilities { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .creation-abilities { grid-template-columns: minmax(0, 1fr); }
   .builder-search, .creation-checks { grid-template-columns: minmax(0, 1fr); }
   .builder-options article { flex-wrap: wrap; }
   .builder-options article > div { flex-basis: 100%; }
