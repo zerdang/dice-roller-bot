@@ -237,6 +237,9 @@ class BattlemapTests(unittest.TestCase):
         self.assertEqual(folder["id"], listed[updated["id"]]["folder_id"])
         self.assertTrue(listed[updated["id"]]["favorite"])
         self.assertEqual(1, self.maps.list_scene_folders(self.warden)[0]["scene_count"])
+        renamed = self.maps.update_scene_folder(self.warden, folder["id"], {"name": "Lower dungeon"})
+        self.assertEqual("Lower dungeon", renamed["name"])
+        self.assertEqual(1, renamed["scene_count"])
         self.assertEqual([self.scene["id"]], [scene["id"] for scene in self.maps.list_scenes(self.player)])
         with self.assertRaises(MapError) as denied:
             self.maps.list_scene_folders(self.player)
