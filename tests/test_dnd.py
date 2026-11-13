@@ -90,6 +90,15 @@ class DndReleaseOneTests(unittest.TestCase):
         self.assertEqual(1, len(self.store.rolls(self.dm)))
         self.assertEqual([], self.store.rolls(self.other))
 
+    def test_roll_feed_marks_only_the_viewers_own_messages(self):
+        self.store.roll(self.player, self.first["id"], {"expression": "1d20", "audience": "public", "operation_id": "player-public"})
+        self.store.roll(self.dm, self.second["id"], {"expression": "1d20", "audience": "public", "operation_id": "dm-public"})
+        player_feed = self.store.rolls(self.player)
+        dm_feed = self.store.rolls(self.dm)
+        self.assertEqual([False, True], [item["is_own"] for item in player_feed])
+        self.assertEqual([True, False], [item["is_own"] for item in dm_feed])
+        self.assertTrue(all(item["audience"] == "public" for item in dm_feed))
+
     def test_linked_token_health_is_canonical_and_filtered(self):
         maps = BattlemapStore(self.path, Path(self.temp.name) / "assets")
         scene = maps.create_scene(self.dm, {"name": "Room"})
