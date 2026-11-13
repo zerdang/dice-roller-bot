@@ -860,7 +860,7 @@ function WardenWorkspace({ dashboard, request, refresh, reportError, toggleMapRe
   </section>;
 }
 
-function Workspace({ selectedGame }) {
+function Workspace({ selectedGame, onLogout }) {
   const [dashboard, setDashboard] = useState(null);
   const [phase, setPhase] = useState("loading");
   const [message, setMessage] = useState("");
@@ -1075,7 +1075,7 @@ function CampaignHome({ account, reload, signOut, initialMessage = "" }) {
         : <form onSubmit={create}><p className="eyebrow">NEW CAMPAIGN</p><h2>Create your table</h2><label><span>Name</span><input required maxLength="100" value={name} onChange={(event) => setName(event.target.value)} placeholder="The Sunless Citadel" /></label><label><span>Game</span><select value={game} onChange={(event) => setGame(event.target.value)}><option value="dnd">D&amp;D</option><option value="mothership">Mothership</option></select></label><button type="submit">Create campaign</button></form>}
       {message && <p className="login-error" role="alert">{message}</p>}
     </section>}
-    {!active ? <main className="empty-campaign"><section><p className="eyebrow">WELCOME ABOARD</p><h1>No campaigns yet</h1><p>Create a D&amp;D or Mothership campaign, or open an invitation from your DM.</p><button type="button" onClick={() => setOpen(true)}>Create your first campaign</button></section></main> : <Workspace selectedGame={selectedGame} />}
+    {!active ? <main className="empty-campaign"><section><p className="eyebrow">WELCOME ABOARD</p><h1>No campaigns yet</h1><p>Create a D&amp;D or Mothership campaign, or open an invitation from your DM.</p><button type="button" onClick={() => setOpen(true)}>Create your first campaign</button></section></main> : <Workspace selectedGame={selectedGame} onLogout={signOut} />}
   </div>;
 }
 
