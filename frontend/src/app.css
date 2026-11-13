@@ -1665,3 +1665,25 @@ html[data-theme="simple"] .map-stage, html[data-theme="fantasy"] .map-stage { te
   .phase-two .inline-roll { grid-template-columns: 1fr auto auto; }
   .phase-two .inline-roll > span { grid-column: 1 / -1; }
 }
+
+/* D&D owns the full viewport; legacy shell and theme frames must not inset it. */
+html body .shell.dnd-shell {
+  width: 100%;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+html body .shell.dnd-shell::before,
+html body .shell.dnd-shell::after { display: none; }
+.shell.dnd-shell > .system-bar { margin: 0; }
+.shell.dnd-shell .dnd-workspace,
+.shell.dnd-shell .tabletop-shell,
+.shell.dnd-shell .map-column { width: 100%; min-width: 0; }
+.shell.dnd-shell .tabletop-shell { height: calc(100vh - 42px); height: calc(100dvh - 42px); }
