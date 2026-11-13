@@ -199,7 +199,7 @@ export default function DndSidebar({ dashboard, cards, roster, rolls, audience, 
       {!collapsed && <button type="button" className="dock-reset" aria-label="Reset sidebar width" title="Reset sidebar width" onClick={() => setWidth(400)}><SidebarIcon name="reset" /></button>}
     </nav>
     {!collapsed && <div className="sidebar-content">
-      {tab === "reference" && <ReferenceBrowser request={request} isWarden={isWarden} />}
+      {tab === "reference" && <ReferenceBrowser request={request} isWarden={isWarden} cards={cards} onGrant={() => refresh(true)} />}
       {tab === "character" && <MyCharacter card={cards[0]} request={request} refresh={refresh} reportError={reportError} onOpenSheet={onOpenSheet} onOpenLog={() => setTab("log")} />}
       {tab === "party" && (quickCard ? <QuickInspect card={quickCard} activeName={activeName} onBack={() => setQuickCardId(null)} onOpenSheet={onOpenSheet} /> : <PartyBrowser roster={roster} role={dashboard.role} activeName={activeName} onOpenSheet={isWarden ? setQuickCardId : onOpenSheet} />)}
       {tab === "log" && <GameLog cards={cards} rolls={rolls} role={dashboard.role} audience={audience} setAudience={setAudience} request={request} refresh={refresh} reportError={reportError} />}

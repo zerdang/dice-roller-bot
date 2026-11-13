@@ -26,6 +26,7 @@ def catalog():
         "language": [{"name": "Elvish", "source": "XPHB", "type": "standard"}, {"name": "Dwarvish", "source": "XPHB", "type": "standard"}],
         "feat": [{"name": "Sample Origin Feat", "source": "XPHB", "category": "O"},
                  {"name": "Sample General Feat", "source": "XPHB", "category": "G"}],
+        "item": [{"name": "Healing Potion", "source": "XPHB", "type": "P"}],
         "background": [{"name": "Example Soldier", "source": "XPHB", "skillProficiencies": [{"athletics": True, "intimidation": True}],
                         "ability": [{"choose": {"weighted": {"from": ["str", "dex", "con"], "weights": [2, 1]}}},
                                     {"choose": {"weighted": {"from": ["str", "dex", "con"], "weights": [1, 1, 1]}}}],
@@ -156,6 +157,23 @@ class CharacterBuilderTests(unittest.TestCase):
         self.assertEqual([], self.evaluate(draft)["errors"])
         draft["language_ids"] = draft["language_ids"][:1]
         self.assertTrue(any(e["step"] == "features" for e in self.evaluate(draft)["errors"]))
+
+    def test_dm_grants_reference_item_once_to_a_campaign_character(self):
+        with self.store.connect() as db:
+            db.execute("INSERT INTO campaign(id,guild_id,name,game_system,warden_token_hash,created_at) VALUES(1,'g','Table','dnd','token','now')")
+            db.execute("INSERT INTO character(id,campaign_id,discord_user_id,name,player_token_hash,created_at) VALUES(12,1,'player','Hero','player-token','now')")
+        item_id = self.store.search(self.dm, kind="item")["items"][0]["id"]
+        body = {"character_id": 12, "revision": 1, "quantity": 2, "operation_id": "give-once"}
+        with self.assertRaises(DndError):
+            self.store.grant_item(self.player, item_id, body)
+        result = self.store.grant_item(self.dm, item_id, body)
+        self.assertEqual(result, self.store.grant_item(self.dm, item_id, body))
+        self.assertEqual(2, DndStore(self.store.path).cards(self.player)[0]["inventory"][0]["quantity"])
+        with self.assertRaises(DndError) as stale:
+            self.store.grant_item(self.dm, item_id, {**body, "operation_id": "stale"})
+        self.assertEqual(409, stale.exception.status)
+        with self.assertRaises(DndError):
+            self.store.grant_item({**self.dm, "campaign_id": 2}, item_id, {**body, "operation_id": "other-campaign"})
 
     def test_save_conflicts_preserve_last_successful_draft(self):
         draft = self.complete()

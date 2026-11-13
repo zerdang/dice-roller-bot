@@ -284,7 +284,11 @@ class BattlemapStore:
             expected = int(payload.get("revision", row["revision"]))
             if expected != row["revision"]:
                 raise MapError("Scene changed; refresh and retry", 409)
-            if payload.get("activate"):
+            if payload.get("deactivate") is True:
+                if row["is_active"]:
+                    db.execute("UPDATE map_scene SET is_active=0,revision=revision+1,updated_at=? WHERE id=?",
+                               (_now(), scene_id))
+            elif payload.get("activate"):
                 db.execute("UPDATE map_scene SET is_active=0 WHERE campaign_id=?", (auth["campaign_id"],))
                 db.execute("UPDATE map_scene SET is_active=1,revision=revision+1,updated_at=? WHERE id=?",
                            (_now(), scene_id))

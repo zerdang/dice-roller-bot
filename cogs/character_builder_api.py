@@ -22,6 +22,7 @@ class CharacterBuilderApi:
         app.router.add_post("/api/dnd/creation/drafts/{draft_id}/portrait", self.upload_portrait)
         app.router.add_get("/api/dnd/creation/drafts/{draft_id}/portrait", self.portrait)
         app.router.add_get("/api/dnd/creation/characters/{character_id}/portrait", self.character_portrait)
+        app.router.add_post("/api/dnd/reference/entries/{entry_id}/grant", self.grant_item)
 
     async def call(self, method, *args, **kwargs):
         try:
@@ -99,3 +100,7 @@ class CharacterBuilderApi:
             return web.Response(body=image, content_type="image/jpeg")
         except DndError as error:
             raise {403: web.HTTPForbidden, 404: web.HTTPNotFound}.get(error.status, web.HTTPBadRequest)(text=str(error))
+
+    async def grant_item(self, request):
+        auth = self.auth(request)
+        return await self.call(self.store.grant_item, auth, request.match_info["entry_id"], await self.body(request))

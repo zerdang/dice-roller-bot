@@ -603,3 +603,47 @@ class CharacterBuilderStore(ReferenceStore):
             if not row:
                 raise DndError("Portrait not found", 404)
             return bytes(row["image"])
+
+    def grant_item(self, auth, entry_id, body):
+        """Give a catalog item to one campaign character, once per operation ID."""
+        self.require_auth(auth)
+        if auth["role"] != "warden":
+            raise DndError("Only the DM can give reference items", 403)
+        if not isinstance(body, dict):
+            raise DndError("JSON object required")
+        character_id = integer(body.get("character_id"), 1, 2**31 - 1, "Character ID")
+        revision = integer(body.get("revision"), 1, 2**31 - 1, "Sheet revision")
+        quantity = integer(body.get("quantity", 1), 1, 99, "Quantity")
+        operation_id = body.get("operation_id")
+        if not isinstance(operation_id, str) or not 1 <= len(operation_id) <= 100:
+            raise DndError("An operation ID is required")
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            actor = DndStore._actor(auth)
+            prior = db.execute("SELECT response_json FROM dnd_request WHERE actor_key=? AND operation_id=?", (actor, operation_id)).fetchone()
+            if prior:
+                return json.loads(prior["response_json"])
+            active = db.execute("SELECT version FROM reference_active WHERE singleton=1").fetchone()
+            version = body.get("version") or (active["version"] if active else "")
+            item = self.selected(db, auth, version, entry_id, {"item", "baseitem"})
+            if not item:
+                raise DndError("Reference item is unavailable in this campaign", 404)
+            character = db.execute("SELECT id FROM character WHERE id=? AND campaign_id=?", (character_id, auth["campaign_id"])).fetchone()
+            if not character:
+                raise DndError("Character not found in this campaign", 404)
+            DndStore._ensure(db, character_id)
+            sheet = db.execute("SELECT revision,inventory_json FROM dnd_character WHERE character_id=?", (character_id,)).fetchone()
+            if sheet["revision"] != revision:
+                raise DndError("Character sheet changed; refresh and retry", 409)
+            inventory = json.loads(sheet["inventory_json"])
+            if len(inventory) >= 50:
+                raise DndError("Character inventory is full", 409)
+            granted = {"name": item["name"], "quantity": quantity,
+                       "notes": f"Reference: {item['source']} · {item['id']}"}
+            inventory.append(granted)
+            db.execute("UPDATE dnd_character SET inventory_json=?,revision=revision+1,updated_at=? WHERE character_id=? AND revision=?",
+                       (json.dumps(inventory), _now(), character_id, revision))
+            result = {"character_id": character_id, "revision": revision + 1, "item": granted}
+            db.execute("INSERT INTO dnd_request(actor_key,operation_id,response_json,created_at) VALUES(?,?,?,?)",
+                       (actor, operation_id, json.dumps(result), _now()))
+            return result
