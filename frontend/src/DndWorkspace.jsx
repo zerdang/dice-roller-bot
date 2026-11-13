@@ -114,7 +114,7 @@ export default function DndWorkspace({ dashboard, request, refresh, reportError 
   const closeSheet = () => { setSheetId(null); window.history.replaceState(null, "", window.location.pathname + window.location.search); window.setTimeout(() => sheetLauncher.current?.focus?.(), 0); };
   const activeSheet = cards.find((card) => card.id === sheetId);
   return <main className="dnd-workspace">
-    <div className="tabletop-shell"><section className="map-column"><div className="compact-campaign-label"><b>{dashboard.campaign?.name || "Campaign"}</b><span>D&D 5e — 2024 rules</span></div><Battlemap dashboard={dashboard} request={request} reportError={reportError} /></section><DndSidebar dashboard={dashboard} cards={cards} roster={dashboard.dnd_roster || cards} rolls={dashboard.dnd_rolls || []} audience={audience} setAudience={setAudience} request={request} refresh={refresh} reportError={reportError} onOpenSheet={openSheet} /></div>
+    <div className="tabletop-shell"><section className="map-column"><div className="compact-campaign-label"><b>{dashboard.campaign?.name || "Campaign"}</b><span>D&D 5e — 2024 rules</span></div><Battlemap dashboard={dashboard} request={request} reportError={reportError} renderDock={(selectionPanel) => <DndSidebar dashboard={dashboard} cards={cards} roster={dashboard.dnd_roster || cards} rolls={dashboard.dnd_rolls || []} audience={audience} setAudience={setAudience} request={request} refresh={refresh} reportError={reportError} onOpenSheet={openSheet} selectionPanel={selectionPanel} />} /></section></div>
     {activeSheet && <CharacterSheet initial={activeSheet} role={dashboard.role} audience={audience} request={request} refresh={refresh} reportError={reportError} onClose={closeSheet} />}
   </main>;
 }
