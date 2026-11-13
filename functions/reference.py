@@ -44,6 +44,55 @@ def mechanical_text(value):
         parts = value.split("|")
         return labels.get(value.lower(), plain(parts[0])) + (f" ({parts[1]})" if len(parts) > 1 and parts[1] else "")
     return str(value)
+
+
+SPELL_SCHOOLS = {"A": "Abjuration", "C": "Conjuration", "D": "Divination", "E": "Enchantment",
+                 "V": "Evocation", "I": "Illusion", "N": "Necromancy", "T": "Transmutation"}
+
+
+def entry_metadata(kind, raw):
+    """Small, readable facts for catalog rows and the builder detail pane."""
+    if kind == "spell":
+        level = raw.get("level")
+        times = raw.get("time") or []
+        casting = ", ".join(f"{part.get('number', 1)} {str(part.get('unit', '')).replace('_', ' ')}".strip()
+                             for part in times if isinstance(part, dict))
+        distance = (raw.get("range") or {}).get("distance") or {}
+        range_type = (raw.get("range") or {}).get("type", "")
+        if isinstance(distance, dict) and distance.get("amount") is not None:
+            reach = f"{distance['amount']} {distance.get('type', '')}".strip()
+            reach = f"Self ({reach})" if range_type == "self" else reach
+        else:
+            reach = str(distance.get("type") or range_type).replace("_", " ").title() if isinstance(distance, dict) else ""
+        parts = raw.get("components") or {}
+        components = [letter.upper() for letter in ("v", "s") if parts.get(letter)] if isinstance(parts, dict) else []
+        material = parts.get("m") if isinstance(parts, dict) else None
+        if material:
+            components.append("M" + (f" ({plain(material.get('text', material))})" if isinstance(material, dict)
+                                     else f" ({plain(material)})" if isinstance(material, str) else ""))
+        durations = raw.get("duration") or []
+        duration_parts = []
+        for item in durations:
+            if not isinstance(item, dict):
+                continue
+            unit = item.get("duration") or {}
+            label = f"{unit.get('amount', '')} {unit.get('type', '')}".strip() if isinstance(unit, dict) and unit else str(item.get("type", ""))
+            duration_parts.append(("Concentration, up to " if item.get("concentration") else "") + label)
+        classes = (raw.get("classes") or {}).get("fromClassList") or []
+        return {"level": level if type(level) is int else None,
+                "school": SPELL_SCHOOLS.get(raw.get("school"), raw.get("school", "")),
+                "casting_time": casting, "range": reach, "components": ", ".join(components),
+                "duration": ", ".join(duration_parts), "ritual": bool((raw.get("meta") or {}).get("ritual")),
+                "classes": ", ".join(item.get("name", "") for item in classes if isinstance(item, dict))}
+    fields = {
+        "class": ("hd", "primaryAbility", "proficiency", "spellcastingAbility"),
+        "race": ("size", "speed", "creatureTypes", "ability"),
+        "subrace": ("size", "speed", "ability"),
+        "background": ("ability", "skillProficiencies", "toolProficiencies", "languageProficiencies", "feats"),
+        "feat": ("prerequisite", "ability"),
+        "language": ("typicalSpeakers", "script"),
+    }.get(kind, ())
+    return {field: mechanical_text(raw[field]) for field in fields if raw.get(field) is not None}
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS reference_version (id TEXT PRIMARY KEY, report TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS reference_active (singleton INTEGER PRIMARY KEY CHECK(singleton=1), version TEXT NOT NULL);
@@ -268,15 +317,25 @@ class ReferenceStore:
             db.execute("INSERT OR REPLACE INTO reference_policy VALUES(?,?)", (auth["campaign_id"], json.dumps(sorted(set(sources))) if sources is not None else None))
         return self.metadata(auth)
 
-    def search(self, auth, query="", kind="", source="", edition="", offset=0, limit=30, version=None):
+    def search(self, auth, query="", kind="", source="", edition="", offset=0, limit=30, version=None, level="", school=""):
         if len(query) > 200 or offset < 0 or not 1 <= limit <= 100:
             raise DndError("Invalid search bounds")
+        if level and (kind != "spell" or level not in {str(value) for value in range(10)}):
+            raise DndError("Invalid spell level")
+        if school and (kind != "spell" or school not in SPELL_SCHOOLS):
+            raise DndError("Invalid spell school")
         with self.connect() as db:
             clauses, args, version = self.filters(db, auth, version)
             for field, value in (("kind", kind), ("source", source), ("edition", edition)):
                 if value:
                     clauses.append(f"e.{field}=?")
                     args.append(value)
+            if level:
+                clauses.append("CAST(json_extract(e.raw, '$.level') AS INTEGER)=?")
+                args.append(int(level))
+            if school:
+                clauses.append("json_extract(e.raw, '$.school')=?")
+                args.append(school)
             words = re.findall(r"\w+", query, re.UNICODE)
             if query.strip() and not words:
                 return {"version": version, "total": 0, "items": []}
@@ -285,13 +344,18 @@ class ReferenceStore:
                 args.extend([" AND ".join('"' + word + '"*' for word in words), version])
             where = " AND ".join(clauses)
             total = db.execute("SELECT count(*) FROM reference_entry e WHERE " + where, args).fetchone()[0]
-            rows = db.execute("SELECT id,kind,name,source,edition,page,warnings FROM reference_entry e WHERE " + where + " ORDER BY CASE WHEN lower(name)=lower(?) THEN 0 ELSE 1 END,name COLLATE NOCASE,source,id LIMIT ? OFFSET ?", [*args, query, limit, offset]).fetchall()
-            return {"version": version, "total": total, "items": [{**dict(r), "warnings": json.loads(r["warnings"]), "creation_support": "reference_only"} for r in rows]}
+            rows = db.execute("SELECT id,kind,name,source,edition,page,warnings,raw FROM reference_entry e WHERE " + where + " ORDER BY CASE WHEN lower(name)=lower(?) THEN 0 ELSE 1 END,name COLLATE NOCASE,source,id LIMIT ? OFFSET ?", [*args, query, limit, offset]).fetchall()
+            return {"version": version, "total": total, "items": [
+                {**{key: r[key] for key in ("id", "kind", "name", "source", "edition", "page")},
+                 "warnings": json.loads(r["warnings"]), "metadata": entry_metadata(r["kind"], json.loads(r["raw"])),
+                 "creation_support": "reference_only"} for r in rows]}
 
     def detail(self, auth, entry_id, version=None):
         with self.connect() as db:
             clauses, args, version = self.filters(db, auth, version)
-            row = db.execute("SELECT id,kind,name,source,edition,page,text,warnings FROM reference_entry e WHERE " + " AND ".join(clauses) + " AND e.id=?", [*args, entry_id]).fetchone()
+            row = db.execute("SELECT id,kind,name,source,edition,page,text,warnings,raw FROM reference_entry e WHERE " + " AND ".join(clauses) + " AND e.id=?", [*args, entry_id]).fetchone()
             if not row:
                 raise DndError("Reference entry not found", 404)
-            return {**dict(row), "version": version, "warnings": json.loads(row["warnings"]), "creation_support": "reference_only"}
+            return {**{key: row[key] for key in ("id", "kind", "name", "source", "edition", "page", "text")},
+                    "version": version, "warnings": json.loads(row["warnings"]),
+                    "metadata": entry_metadata(row["kind"], json.loads(row["raw"])), "creation_support": "reference_only"}

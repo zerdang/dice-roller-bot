@@ -475,13 +475,14 @@ class CharacterBuilderStore(ReferenceStore):
             row = self.owned(db, auth, draft_id)
             return self.evaluate(db, auth, row, payload)
 
-    def options(self, auth, draft_id, kind, query="", source="", edition="", offset=0):
+    def options(self, auth, draft_id, kind, query="", source="", edition="", offset=0, level="", school=""):
         if kind not in {"class", "race", "subrace", "background", "spell", "language", "feat"}:
             raise DndError("Unsupported creation category")
         with self.connect() as db:
             row = self.owned(db, auth, draft_id)
             version = row["version"]
-        return self.search(auth, query=query, kind=kind, source=source, edition=edition, offset=offset, version=version)
+        return self.search(auth, query=query, kind=kind, source=source, edition=edition,
+                           offset=offset, limit=60, version=version, level=level, school=school)
 
     def finalize(self, auth, draft_id, body):
         """DM approval applies a validated draft once, preserving the prior sheet."""
