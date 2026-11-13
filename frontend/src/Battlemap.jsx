@@ -87,6 +87,7 @@ export default function Battlemap({ dashboard, request, reportError, renderDock 
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [pendingCharacter, setPendingCharacter] = useState(null);
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
+  const [headerExpanded, setHeaderExpanded] = useState(false);
   const svgRef = useRef(null);
   const stageRef = useRef(null);
   const workspaceRef = useRef(null);
@@ -423,12 +424,19 @@ export default function Battlemap({ dashboard, request, reportError, renderDock 
   }, [selected, state.scene]);
 
   return <section className="battlemap-workspace" ref={workspaceRef}>
-    <header className="battlemap-header">
-      <div><p className="index">D&D shared table</p><h2>{state.scene?.name || "Battlemap"}</h2></div>
+    <header className={`battlemap-header${headerExpanded || sceneBrowserOpen ? " expanded" : " compact"}`}>
+      <div className="compact-table-title"><h2>{dashboard.campaign?.name || "Campaign"}</h2><span>{state.scene?.name || "No active scene"}</span></div>
       {state.scene && <span className={`scene-visibility ${state.scene.is_active ? "live" : "preview"}`}>{state.scene.is_active ? "LIVE — visible to players" : isWarden ? "PREVIEW — DM only" : "Waiting for the DM"}</span>}
       <span className={`connection ${connected ? "online" : "offline"}`}>{pending ? "Saving" : connected ? "Synchronized" : "Reconnecting"}</span>
-      <button type="button" onClick={() => document.fullscreenElement ? document.exitFullscreen() : workspaceRef.current?.requestFullscreen()}>Fullscreen</button>
-      {isWarden && <button type="button" aria-expanded={sceneBrowserOpen} onClick={() => { setSceneBrowserOpen((open) => !open); setTemplateBrowserOpen(false); }}>Preparation</button>}
+      <button type="button" className="header-expand" aria-expanded={headerExpanded || sceneBrowserOpen} onClick={() => {
+        if (headerExpanded || sceneBrowserOpen) {
+          setHeaderExpanded(false);
+          setSceneBrowserOpen(false);
+          setTemplateBrowserOpen(false);
+        } else setHeaderExpanded(true);
+      }}>{headerExpanded || sceneBrowserOpen ? "Hide controls" : "Controls"}</button>
+      {(headerExpanded || sceneBrowserOpen) && <button type="button" onClick={() => document.fullscreenElement ? document.exitFullscreen() : workspaceRef.current?.requestFullscreen()}>Fullscreen</button>}
+      {isWarden && (headerExpanded || sceneBrowserOpen) && <button type="button" aria-expanded={sceneBrowserOpen} onClick={() => { setSceneBrowserOpen((open) => !open); setTemplateBrowserOpen(false); }}>Preparation</button>}
       {isWarden && sceneBrowserOpen && <div className="preparation-actions"><select aria-label="Scene" value={sceneId || ""} onChange={(event) => setSceneId(Number(event.target.value))}>{scenes.map((scene) => <option value={scene.id} key={scene.id}>{scene.is_active ? "★ " : ""}{scene.name}</option>)}</select><button type="button" onClick={createScene}>New scene</button>{state.scene && <button type="button" onClick={duplicateScene}>Duplicate</button>}<label className="map-upload">Upload map<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => uploadMap(event.target.files?.[0])} /></label>{state.scene && <button type="button" className="delete-record" onClick={deleteScene}>Delete scene</button>}</div>}
     </header>
     {pendingCharacter && <div className="placement-banner" role="status">Click the map to place {pendingCharacter.name}. Press Escape to cancel.</div>}

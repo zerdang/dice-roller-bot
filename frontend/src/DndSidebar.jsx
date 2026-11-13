@@ -15,10 +15,29 @@ function GameLog({ cards, rolls, role, audience, setAudience, request, refresh, 
     try {
       const clean = expression.trim().replace(/^\/r\s+/i, "");
       await request(`/api/dnd/characters/${actorId}/rolls`, { method: "POST", body: JSON.stringify({ kind: "custom", label, expression: clean, mode: "normal", audience, operation_id: operationId() }) });
+      setExpression("");
       await refresh(true);
     } catch (caught) { setError(caught.message || "Roll failed"); reportError(caught); }
   };
-  return <section className="sidebar-pane log-pane"><header><div><h2>Game Log</h2><p>Recent campaign rolls</p></div><label>Audience<select value={audience} onChange={(event) => setAudience(event.target.value)}><option value="public">Everyone</option><option value="private">Me + DM</option>{role === "warden" && <option value="dm">DM only</option>}</select></label></header><div className="log-scroll">{[...rolls].reverse().map((roll) => <details className={`log-card ${roll.audience !== "public" ? "private" : ""}`} key={roll.id}><summary><span className="actor-fallback">{roll.actor_name.slice(0, 1)}</span><span><b>{roll.actor_name}</b><small>{roll.label} · {new Date(roll.created_at).toLocaleString()}</small>{roll.audience !== "public" && <em className="audience-label">{roll.audience === "dm" ? "DM only" : "Private"}</em>}</span><strong>{roll.total}</strong></summary><div><span>{roll.expression}</span><span>Dice: {roll.dice.join(", ") || "—"}</span><span>Selected: {roll.selected.join(", ") || "—"}</span><span>{roll.mode}</span></div></details>)}{!rolls.length && <p className="empty-state">Rolls from the sheet and composer will appear here.</p>}</div><form className="log-composer" onSubmit={submit}>{role === "warden" ? <div><select aria-label="Roll actor" value={actorId} onChange={(event) => setActorId(event.target.value)}>{cards.map((card) => <option value={card.id} key={card.id}>{card.name}</option>)}</select><input aria-label="Roll label" value={label} onChange={(event) => setLabel(event.target.value)} /></div> : <label className="composer-label">Roll label<input value={label} onChange={(event) => setLabel(event.target.value)} /></label>}<div><input aria-label="Dice expression" value={expression} onChange={(event) => setExpression(event.target.value)} placeholder="1d20+4" /><button type="submit">Roll</button></div>{error && <p className="field-error">{error}</p>}<div className="dice-shortcuts">{dice.map((sides) => <button type="button" onClick={() => setExpression(`1d${sides}`)} key={sides}>d{sides}</button>)}</div></form></section>;
+  return <section className="sidebar-pane log-pane">
+    <header><div><h2>Game Log</h2><p>Campaign roll chat</p></div></header>
+    <div className="log-scroll" aria-live="polite">{[...rolls].reverse().map((roll) => <div className={`chat-roll-row${roll.is_own ? " own" : ""}`} key={roll.id}>
+      {!roll.is_own && <span className="actor-fallback" aria-hidden="true">{roll.actor_name.slice(0, 1)}</span>}
+      <details className={`log-card${roll.audience !== "public" ? " private" : ""}`}>
+        <summary><span><b>{roll.is_own ? "You" : roll.actor_name}</b><small>{roll.label}</small></span><strong>{roll.total}</strong></summary>
+        <div><span>{roll.expression}</span><span>Dice: {roll.dice.join(", ") || "—"}</span><span>Selected: {roll.selected.join(", ") || "—"}</span><span>{roll.mode}</span></div>
+        <footer><em className={`audience-label ${roll.audience}`}>{roll.audience === "public" ? "Public" : roll.audience === "dm" ? "DM only" : "Private"}</em><time dateTime={roll.created_at}>{new Date(roll.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time></footer>
+      </details>
+    </div>)}{!rolls.length && <p className="empty-state">Rolls will appear here like a conversation.</p>}</div>
+    <form className="log-composer chat-composer" onSubmit={submit}>
+      {role === "warden" && <label>Roll as<select aria-label="Roll actor" value={actorId} onChange={(event) => setActorId(event.target.value)}>{cards.map((card) => <option value={card.id} key={card.id}>{card.name}</option>)}</select></label>}
+      <label>Label<input value={label} onChange={(event) => setLabel(event.target.value)} /></label>
+      <div className="chat-input-row"><input aria-label="Dice expression" value={expression} onChange={(event) => setExpression(event.target.value)} placeholder="Type a roll, e.g. 1d20+4" /><button type="submit">Roll</button></div>
+      <label className="audience-control">Send as<select value={audience} onChange={(event) => setAudience(event.target.value)}><option value="public">Public — everyone</option><option value="private">Private — player + DM</option>{role === "warden" && <option value="dm">DM only</option>}</select></label>
+      {error && <p className="field-error">{error}</p>}
+      <div className="dice-shortcuts">{dice.map((sides) => <button type="button" onClick={() => setExpression(`1d${sides}`)} key={sides}>d{sides}</button>)}</div>
+    </form>
+  </section>;
 }
 
 function PartyBrowser({ roster, role, activeName, onOpenSheet }) {

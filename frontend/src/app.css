@@ -1687,3 +1687,149 @@ html body .shell.dnd-shell::after { display: none; }
 .shell.dnd-shell .tabletop-shell,
 .shell.dnd-shell .map-column { width: 100%; min-width: 0; }
 .shell.dnd-shell .tabletop-shell { height: calc(100vh - 42px); height: calc(100dvh - 42px); }
+
+/* Keep the tabletop chrome compact so the map owns the available viewport. */
+.map-column .battlemap-workspace { padding: 0 8px 8px; }
+.battlemap-header {
+  min-height: 44px;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 4px 2px;
+}
+.battlemap-header.compact { flex-wrap: nowrap; }
+.battlemap-header > .compact-table-title {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 10px;
+  margin-right: auto;
+}
+.compact-table-title h2 {
+  flex: 0 1 auto;
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compact-table-title span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dnd-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.battlemap-header.compact .connection { display: none; }
+.battlemap-header .scene-visibility {
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.battlemap-header .header-expand,
+.battlemap-header > button { min-height: 32px; padding: 4px 8px; }
+.battlemap-header.expanded .preparation-actions { margin-top: 2px; }
+.tabletop-shell .scene-browser,
+.tabletop-shell .template-browser {
+  top: 102px;
+  max-height: calc(100% - 117px);
+}
+.battlemap-layout,
+.battlemap-layout.inspector-collapsed,
+.battlemap-empty-with-dock { height: calc(100% - 44px); min-height: 0; }
+.placement-banner { top: 52px; }
+
+/* Roll history reads as a conversation: mine on the right, everyone else left. */
+.log-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+.chat-roll-row {
+  display: flex;
+  width: 100%;
+  align-items: flex-end;
+  gap: 7px;
+}
+.chat-roll-row.own { justify-content: flex-end; }
+.chat-roll-row > .actor-fallback {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  font-size: 12px;
+}
+.chat-roll-row .log-card {
+  width: fit-content;
+  max-width: 82%;
+  margin: 0;
+  border-radius: 14px 14px 14px 4px;
+  background: #edf3f7;
+}
+.chat-roll-row.own .log-card {
+  border-color: #55c8bb;
+  border-radius: 14px 14px 4px 14px;
+  background: #d9f1ed;
+}
+.chat-roll-row .log-card.private { box-shadow: inset 3px 0 0 #9c6ddd; }
+.chat-roll-row .log-card summary {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 9px 11px 5px;
+}
+.chat-roll-row .log-card summary > span { min-width: 0; }
+.chat-roll-row .log-card summary strong {
+  padding-left: 10px;
+  font-size: 24px;
+}
+.chat-roll-row .log-card > div {
+  gap: 5px 10px;
+  padding: 4px 11px 8px;
+  font-size: 12px;
+}
+.chat-roll-row .log-card footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 11px 8px;
+  color: #637788;
+  font-size: 10px;
+}
+.chat-roll-row .audience-label { margin: 0; }
+.chat-roll-row .audience-label.public { background: #2f756d; }
+.chat-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 7px;
+}
+.chat-composer label {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  color: var(--dnd-muted);
+  font-size: 11px;
+}
+.chat-composer .chat-input-row,
+.chat-composer .audience-control,
+.chat-composer .dice-shortcuts,
+.chat-composer .field-error { grid-column: 1 / -1; }
+.log-composer.chat-composer > .chat-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  margin: 0;
+}
+.log-composer.chat-composer > .dice-shortcuts {
+  display: flex;
+  gap: 5px;
+  margin: 0;
+}
+
+@media (max-width: 620px) {
+  .battlemap-header.compact { flex-wrap: wrap; }
+  .battlemap-header > .compact-table-title { width: auto; flex: 1 1 100%; }
+  .battlemap-layout,
+  .battlemap-layout.inspector-collapsed,
+  .battlemap-empty-with-dock { height: calc(100% - 78px); }
+  .chat-roll-row .log-card { max-width: 88%; }
+}

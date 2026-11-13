@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS dnd_roll_event (
     expression TEXT NOT NULL, dice_json TEXT NOT NULL, selected_json TEXT NOT NULL,
     modifier INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL,
     mode TEXT NOT NULL DEFAULT 'normal', audience TEXT NOT NULL DEFAULT 'public',
+    roller_key TEXT NOT NULL DEFAULT '',
     parent_roll_id INTEGER REFERENCES dnd_roll_event(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL
 );
@@ -133,6 +134,9 @@ class DndStore:
             for name, definition in additions.items():
                 if name not in columns:
                     db.execute(f"ALTER TABLE dnd_character ADD COLUMN {name} {definition}")
+            roll_columns = {row["name"] for row in db.execute("PRAGMA table_info(dnd_roll_event)")}
+            if "roller_key" not in roll_columns:
+                db.execute("ALTER TABLE dnd_roll_event ADD COLUMN roller_key TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -460,9 +464,10 @@ class DndStore:
                     raise DndError("Heroic Inspiration is not available", 409)
                 db.execute("UPDATE dnd_character SET heroic_inspiration=0,revision=revision+1,updated_at=? WHERE character_id=?", (_now(), character_id))
             created = _now(); label = str(payload.get("label", kind.title()))[:100] or kind.title()
-            event_id = db.execute("INSERT INTO dnd_roll_event(campaign_id,character_id,actor_name,label,kind,expression,dice_json,selected_json,modifier,total,mode,audience,parent_roll_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (auth["campaign_id"], character_id, character["name"], label, kind, normalized, _dump(dice), _dump(selected), modifier, total, mode, audience, parent, created)).lastrowid
-            result = {"id": event_id, "character_id": character_id, "actor_name": character["name"], "label": label, "kind": kind, "expression": normalized, "dice": dice, "selected": selected, "modifier": modifier, "total": total, "mode": mode, "audience": audience, "parent_roll_id": parent, "created_at": created}
+            roller_key = self._actor(auth)
+            event_id = db.execute("INSERT INTO dnd_roll_event(campaign_id,character_id,actor_name,label,kind,expression,dice_json,selected_json,modifier,total,mode,audience,roller_key,parent_roll_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (auth["campaign_id"], character_id, character["name"], label, kind, normalized, _dump(dice), _dump(selected), modifier, total, mode, audience, roller_key, parent, created)).lastrowid
+            result = {"id": event_id, "character_id": character_id, "actor_name": character["name"], "label": label, "kind": kind, "expression": normalized, "dice": dice, "selected": selected, "modifier": modifier, "total": total, "mode": mode, "audience": audience, "is_own": True, "parent_roll_id": parent, "created_at": created}
             db.execute("INSERT INTO dnd_request VALUES(?,?,?,?)", (self._actor(auth), operation_id, _dump(result), _now()))
         return result
 
@@ -474,5 +479,5 @@ class DndStore:
         for row in rows:
             if auth["role"] != "warden" and row["audience"] != "public" and row["character_id"] != auth["character_id"]:
                 continue
-            item = dict(row); item["dice"] = json.loads(item.pop("dice_json")); item["selected"] = json.loads(item.pop("selected_json")); result.append(item)
+            item = dict(row); item["dice"] = json.loads(item.pop("dice_json")); item["selected"] = json.loads(item.pop("selected_json")); item["is_own"] = item.pop("roller_key", "") == self._actor(auth); result.append(item)
         return result
