@@ -46,6 +46,18 @@ class BattlemapTests(unittest.TestCase):
         with self.assertRaises(MapError):
             self.maps.snapshot(self.player, private_scene["id"])
 
+    def test_dm_can_hide_live_map_and_show_it_again(self):
+        hidden = self.maps.update_scene(self.warden, self.scene["id"],
+                                        {"revision": self.scene["revision"], "deactivate": True})
+        self.assertFalse(hidden["is_active"])
+        self.assertEqual([], self.maps.list_scenes(self.player))
+        self.assertIsNone(self.maps.snapshot(self.player)["scene"])
+        with self.assertRaises(MapError):
+            self.maps.update_scene(self.player, self.scene["id"], {"revision": hidden["revision"], "activate": True})
+        shown = self.maps.update_scene(self.warden, self.scene["id"],
+                                       {"revision": hidden["revision"], "activate": True})
+        self.assertTrue(shown["is_active"])
+
     def test_token_ownership_lock_visibility_and_stale_revision(self):
         token = self.maps.create_token(self.warden, self.scene["id"], {
             "name": "Ada", "owners": [self.first["id"]], "x": 10, "y": 20,

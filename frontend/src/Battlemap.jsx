@@ -87,6 +87,11 @@ export default function Battlemap({ dashboard, request, refreshDashboard, report
   const [sceneSearch, setSceneSearch] = useState("");
   const [sceneFolder, setSceneFolder] = useState("all");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [sceneEditor, setSceneEditor] = useState(null);
+  const [sceneEditorPreview, setSceneEditorPreview] = useState("");
+  const [folderEditor, setFolderEditor] = useState(false);
+  const [folderName, setFolderName] = useState("");
+  const [editorSaving, setEditorSaving] = useState(false);
   const [pendingCharacter, setPendingCharacter] = useState(null);
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
   const [headerExpanded, setHeaderExpanded] = useState(false);
@@ -150,6 +155,12 @@ export default function Battlemap({ dashboard, request, refreshDashboard, report
     return () => { if (url) URL.revokeObjectURL(url); };
   }, [reportError, request, state.scene?.asset_id]);
   useEffect(() => {
+    if (!sceneEditor?.file) { setSceneEditorPreview(""); return undefined; }
+    const url = URL.createObjectURL(sceneEditor.file);
+    setSceneEditorPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [sceneEditor?.file]);
+  useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return undefined;
     const handleWheel = (event) => {
@@ -185,16 +196,54 @@ export default function Battlemap({ dashboard, request, refreshDashboard, report
     finally { setPending(false); }
   };
 
-  const createScene = () => {
-    const name = window.prompt("Scene name", `Scene ${scenes.length + 1}`);
-    if (!name) return;
-    mutate(async () => { const created = await request("/api/battlemap/scenes", { method: "POST", body: JSON.stringify(operation({ name })) }); await loadScenes(); setSceneId(created.id); });
+  const createScene = (file = null) => {
+    const upload = file instanceof File ? file : null;
+    setSceneEditor({ scene: null, name: upload?.name.replace(/\.[^.]+$/, "").slice(0, 100) || `Scene ${scenes.length + 1}`, folderId: sceneFolder !== "all" && sceneFolder !== "unfiled" ? sceneFolder : "", file: upload });
+    setSceneBrowserOpen(true); setTemplateBrowserOpen(false);
   };
-
-  const createFolder = () => {
-    const name = window.prompt("Folder name");
-    if (!name) return;
-    mutate(async () => { await request("/api/battlemap/scene-folders", { method: "POST", body: JSON.stringify({ name }) }); await loadPreparation(); });
+  const editScene = (scene) => {
+    setSceneEditor({ scene, name: scene.name, folderId: String(scene.folder_id || ""), file: null });
+    setSceneBrowserOpen(true); setTemplateBrowserOpen(false);
+  };
+  const saveSceneEditor = async (event) => {
+    event.preventDefault();
+    const draft = sceneEditor;
+    const name = draft?.name.trim();
+    if (!name || editorSaving) return;
+    setEditorSaving(true); setPending(true);
+    try {
+      let asset = null;
+      if (draft.file) {
+        const body = new FormData(); body.append("file", draft.file);
+        asset = await request("/api/battlemap/assets", { method: "POST", body, headers: { "X-Operation-ID": crypto.randomUUID() } });
+      }
+      let scene = draft.scene;
+      if (!scene) scene = await request("/api/battlemap/scenes", { method: "POST", body: JSON.stringify(operation({ name, ...(asset ? { width: asset.width, height: asset.height } : {}) })) });
+      const changes = {
+        ...(scene.name !== name ? { name } : {}),
+        ...(String(scene.folder_id || "") !== draft.folderId ? { folder_id: draft.folderId ? Number(draft.folderId) : null } : {}),
+        ...(asset ? { asset_id: asset.id, width: asset.width, height: asset.height } : {}),
+      };
+      if (Object.keys(changes).length) scene = await request(`/api/battlemap/scenes/${scene.id}`, { method: "PATCH", body: JSON.stringify(operation({ revision: scene.revision, ...changes })) });
+      await Promise.all([loadScenes(), loadPreparation()]);
+      setSceneId(scene.id); setSceneEditor(null);
+      await refresh();
+    } catch (error) { reportError(error); }
+    finally { setEditorSaving(false); setPending(false); }
+  };
+  const createFolder = async (event) => {
+    event.preventDefault();
+    const name = folderName.trim();
+    if (!name || editorSaving) return;
+    setEditorSaving(true);
+    try {
+      const folder = await request("/api/battlemap/scene-folders", { method: "POST", body: JSON.stringify({ name }) });
+      await loadPreparation();
+      setFolderEditor(false); setFolderName("");
+      if (sceneEditor) setSceneEditor(current => current ? { ...current, folderId: String(folder.id) } : current);
+      setSceneFolder(String(folder.id));
+    } catch (error) { reportError(error); }
+    finally { setEditorSaving(false); }
   };
   const toggleFavorite = (scene) => mutate(async () => {
     await request(`/api/battlemap/scenes/${scene.id}/favorite`, { method: "PUT", body: JSON.stringify({ favorite: !scene.favorite }) });
@@ -209,14 +258,24 @@ export default function Battlemap({ dashboard, request, refreshDashboard, report
   const deleteScene = () => window.confirm(`Permanently delete ${state.scene.name}?`) && mutate(async () => { await request(`/api/battlemap/scenes/${state.scene.id}`, { method: "DELETE", headers: { "X-Operation-ID": crypto.randomUUID() } }); setSceneId(null); await loadScenes(); });
   const updateSelected = (patch) => selected && mutate(() => request(`/api/battlemap/tokens/${selected.id}`, { method: "PATCH", body: JSON.stringify(operation({ revision: selected.revision, ...patch })) }));
   const updateAnnotation = (patch) => selectedAnnotation && mutate(() => request(`/api/battlemap/annotations/${selectedAnnotation.id}`, { method: "PATCH", body: JSON.stringify(operation({ revision: selectedAnnotation.revision, ...patch })) }));
-  const uploadMap = (file) => {
-    if (!file) return;
+  const uploadMapForScene = (file, scene) => {
+    if (!file || !scene) return;
     const body = new FormData(); body.append("file", file);
     mutate(async () => {
       const asset = await request("/api/battlemap/assets", { method: "POST", body, headers: { "X-Operation-ID": crypto.randomUUID() } });
-      await updateScene({ asset_id: asset.id, width: asset.width, height: asset.height });
+      const updated = await request(`/api/battlemap/scenes/${scene.id}`, { method: "PATCH", body: JSON.stringify(operation({ revision: scene.revision, asset_id: asset.id, width: asset.width, height: asset.height })) });
+      if (state.scene?.id === scene.id) setState((current) => ({ ...current, scene: updated }));
+      await loadScenes();
     });
   };
+  const uploadMap = (file) => uploadMapForScene(file, state.scene);
+  const uploadNewScene = (file) => { if (file) createScene(file); };
+  const renameScene = (scene) => editScene(scene);
+  const setSceneVisible = (scene, visible) => mutate(async () => {
+    const updated = await request(`/api/battlemap/scenes/${scene.id}`, { method: "PATCH", body: JSON.stringify(operation({ revision: scene.revision, [visible ? "activate" : "deactivate"]: true })) });
+    if (state.scene?.id === scene.id) setState((current) => ({ ...current, scene: updated }));
+    await loadScenes(); await refreshDashboard(true);
+  });
   const uploadPortrait = (file) => {
     if (!file || !selected) return;
     const body = new FormData(); body.append("file", file);
@@ -591,6 +650,7 @@ export default function Battlemap({ dashboard, request, refreshDashboard, report
       <div className="compact-table-title"><h2>{dashboard.campaign?.name || "Campaign"}</h2><span>{state.scene?.name || "No active scene"}</span></div>
       {state.scene && <span className={`scene-visibility ${state.scene.is_active ? "live" : "preview"}`}>{state.scene.is_active ? "LIVE — visible to players" : isWarden ? "PREVIEW — DM only" : "Waiting for the DM"}</span>}
       <span className={`connection ${connected ? "online" : "offline"}`}>{pending ? "Saving" : connected ? "Synchronized" : "Reconnecting"}</span>
+      {isWarden && <div className="scene-quick-actions" aria-label="Current map actions">{state.scene ? <><label className="map-upload">Replace map image<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { uploadMap(event.target.files?.[0]); event.target.value = ""; }} /></label><button type="button" onClick={() => renameScene(state.scene)}>Rename</button><button type="button" className={state.scene.is_active ? "scene-hide" : "show-scene"} onClick={() => setSceneVisible(state.scene, !state.scene.is_active)}>{state.scene.is_active ? "Hide from players" : "Show to players"}</button></> : <label className="map-upload">Upload new scene<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { uploadNewScene(event.target.files?.[0]); event.target.value = ""; }} /></label>}</div>}
       <button type="button" className="header-expand" aria-expanded={headerExpanded || sceneBrowserOpen} onClick={() => {
         if (headerExpanded || sceneBrowserOpen) {
           setHeaderExpanded(false);
@@ -604,7 +664,9 @@ export default function Battlemap({ dashboard, request, refreshDashboard, report
     </header>
     {pendingCharacter && <div className="placement-banner" role="status">Click the map to place {pendingCharacter.name}. Press Escape to cancel.</div>}
     {isWarden && sceneBrowserOpen && <nav className="preparation-nav" aria-label="Preparation tools"><button type="button" className={!templateBrowserOpen ? "primary-prep" : ""} onClick={() => setTemplateBrowserOpen(false)}>Scene library</button><button type="button" className={templateBrowserOpen ? "primary-prep" : ""} onClick={() => setTemplateBrowserOpen(true)}>Creature library</button></nav>}
-    {isWarden && sceneBrowserOpen && <section className="scene-browser" aria-label="Scene browser"><header><h3>Scene browser</h3><input type="search" placeholder="Search scenes" aria-label="Search scenes" value={sceneSearch} onChange={(event) => setSceneSearch(event.target.value)} /><select aria-label="Filter by folder" value={sceneFolder} onChange={(event) => setSceneFolder(event.target.value)}><option value="all">All folders</option><option value="unfiled">Unfiled</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name} ({folder.scene_count})</option>)}</select><label><input type="checkbox" checked={favoritesOnly} onChange={(event) => setFavoritesOnly(event.target.checked)} /> Favorites</label><button type="button" onClick={createFolder}>New folder</button><button type="button" onClick={createScene}>New scene</button></header><div className="scene-grid">{visibleScenes.map((scene) => <article className={scene.id === sceneId ? "selected" : ""} key={scene.id}><button type="button" className="scene-preview" onClick={() => setSceneId(scene.id)}><AssetThumbnail assetId={scene.asset_id} request={request} alt="" /><strong>{scene.name}</strong><small>{scene.is_active ? "Live for players" : "DM preview"}</small></button><button type="button" className="favorite-button" aria-label={`${scene.favorite ? "Remove" : "Add"} ${scene.name} ${scene.favorite ? "from" : "to"} favorites`} onClick={() => toggleFavorite(scene)}>{scene.favorite ? "★" : "☆"}</button><select aria-label={`Folder for ${scene.name}`} value={scene.folder_id || ""} onChange={(event) => mutate(async () => { await request(`/api/battlemap/scenes/${scene.id}`, { method: "PATCH", body: JSON.stringify(operation({ revision: scene.revision, folder_id: event.target.value ? Number(event.target.value) : null })) }); await loadScenes(); await loadPreparation(); })}><option value="">Unfiled</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></article>)}</div></section>}
+    {isWarden && sceneBrowserOpen && folderEditor && <form className="scene-inline-editor folder-inline-editor" onSubmit={createFolder} aria-label="Create scene folder"><label>New folder name<input autoFocus maxLength={80} required value={folderName} onChange={event => setFolderName(event.target.value)} placeholder="For example: Chapter 1" /></label><div className="scene-editor-actions"><button type="submit" disabled={editorSaving || !folderName.trim()}>{editorSaving ? "Creating…" : "Create folder"}</button><button type="button" onClick={() => { setFolderEditor(false); setFolderName(""); }}>Cancel</button></div></form>}
+    {isWarden && sceneBrowserOpen && sceneEditor && <form className="scene-inline-editor" onSubmit={saveSceneEditor} aria-label={sceneEditor.scene ? `Edit ${sceneEditor.scene.name}` : "Create scene"}><h3>{sceneEditor.scene ? "Edit scene" : "New scene"}</h3><div className="scene-editor-fields"><label>Scene name<input autoFocus maxLength={100} required value={sceneEditor.name} onChange={event => setSceneEditor(current => ({ ...current, name: event.target.value }))} /></label><label>Folder<select value={sceneEditor.folderId} onChange={event => setSceneEditor(current => ({ ...current, folderId: event.target.value }))}><option value="">Unfiled</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label><label>Map image<input type="file" accept="image/png,image/jpeg,image/webp" onChange={event => setSceneEditor(current => ({ ...current, file: event.target.files?.[0] || null }))} /></label></div><div className="scene-editor-preview">{sceneEditorPreview ? <img src={sceneEditorPreview} alt="Selected map preview" /> : sceneEditor.scene?.asset_id ? <AssetThumbnail assetId={sceneEditor.scene.asset_id} request={request} alt="Current map preview" /> : null}</div><p className="scene-editor-image">{sceneEditor.file ? `Selected: ${sceneEditor.file.name}` : sceneEditor.scene?.asset_id ? "Current image will be kept unless you choose another." : "Choose an image now or add one later."}</p><div className="scene-editor-actions"><button type="submit" disabled={editorSaving || !sceneEditor.name.trim()}>{editorSaving ? "Saving…" : sceneEditor.scene ? "Save scene" : "Create scene"}</button><button type="button" onClick={() => setSceneEditor(null)}>Cancel</button></div></form>}
+    {isWarden && sceneBrowserOpen && <section className="scene-browser" aria-label="Scene browser"><header><h3>Scene browser</h3><input type="search" placeholder="Search scenes" aria-label="Search scenes" value={sceneSearch} onChange={(event) => setSceneSearch(event.target.value)} /><select aria-label="Filter by folder" value={sceneFolder} onChange={(event) => setSceneFolder(event.target.value)}><option value="all">All folders</option><option value="unfiled">Unfiled</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name} ({folder.scene_count})</option>)}</select><label><input type="checkbox" checked={favoritesOnly} onChange={(event) => setFavoritesOnly(event.target.checked)} /> Favorites</label><button type="button" onClick={() => setFolderEditor(true)}>New folder</button><button type="button" onClick={createScene}>New scene</button><label className="map-upload">Upload new scene<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { uploadNewScene(event.target.files?.[0]); event.target.value = ""; }} /></label></header><div className="scene-grid">{visibleScenes.map((scene) => <article className={scene.id === sceneId ? "selected" : ""} key={scene.id}><button type="button" className="scene-preview" onClick={() => setSceneId(scene.id)}><AssetThumbnail assetId={scene.asset_id} request={request} alt="" /><strong>{scene.name}</strong><small>{scene.is_active ? "Live for players" : "DM preview"}</small></button><button type="button" className="favorite-button" aria-label={`${scene.favorite ? "Remove" : "Add"} ${scene.name} ${scene.favorite ? "from" : "to"} favorites`} onClick={() => toggleFavorite(scene)}>{scene.favorite ? "★" : "☆"}</button><div className="scene-card-actions"><label className="map-upload">{scene.asset_id ? "Replace image" : "Upload image"}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { uploadMapForScene(event.target.files?.[0], scene); event.target.value = ""; }} /></label><button type="button" onClick={() => renameScene(scene)}>Rename</button><button type="button" onClick={() => setSceneVisible(scene, !scene.is_active)}>{scene.is_active ? "Hide" : "Show"}</button></div><select aria-label={`Folder for ${scene.name}`} value={scene.folder_id || ""} onChange={(event) => mutate(async () => { await request(`/api/battlemap/scenes/${scene.id}`, { method: "PATCH", body: JSON.stringify(operation({ revision: scene.revision, folder_id: event.target.value ? Number(event.target.value) : null })) }); await loadScenes(); await loadPreparation(); })}><option value="">Unfiled</option>{folders.map((folder) => <option value={folder.id} key={folder.id}>{folder.name}</option>)}</select></article>)}</div></section>}
     {isWarden && templateBrowserOpen && <section className="template-browser" aria-label="Creature template library"><header><div><h3>Creature library</h3><p>Templates are copied into independent map tokens. Later edits affect future placements only.</p></div><button type="button" onClick={saveCreatureTemplate}>{selected ? `Save ${selected.name}` : "New template"}</button></header><div className="template-grid">{templates.map((template) => <article draggable="true" onDragStart={(event) => event.dataTransfer.setData("application/x-creature-template", String(template.id))} key={template.id}><AssetThumbnail assetId={template.portrait_asset_id} request={request} alt="" /><div><strong>{template.name}</strong><small>{template.size} square{template.size === 1 ? "" : "s"}{template.armor_class != null ? ` · AC ${template.armor_class}` : ""}{template.hit_points != null ? ` · HP ${template.hit_points}` : ""}</small></div><button type="button" onClick={() => placeCreatureTemplate(template.id)}>Place</button><button type="button" onClick={() => editCreatureTemplate(template)}>Edit</button><button type="button" className="delete-record" aria-label={`Delete ${template.name}`} onClick={() => deleteCreatureTemplate(template)}>×</button></article>)}</div></section>}
     {!state.scene ? <div className="battlemap-empty-with-dock"><div className="battlemap-empty">{isWarden ? <><p>No scene exists yet.</p><button type="button" onClick={createScene}>Create first scene</button></> : <p>The DM has not activated a scene.</p>}</div>{renderDock(<p className="empty-state">Select a scene or map object to see its controls.</p>, { sceneId })}</div> : <div className="battlemap-layout">
       <nav className="map-tools" aria-label="Battlemap tools">{TOOLS.filter((name) => isWarden || name !== "token").map((name) => <ToolButton name={name} label={name === "pan" ? "Pan (or right-drag)" : name} active={tool === name} onClick={() => setTool(name)} key={name} />)}<div className={`shape-tool${shapeMenuOpen ? " open" : ""}`}><ToolButton name="shapes" label="Draw shapes" active={SHAPE_TOOLS.includes(tool)} onClick={() => setShapeMenuOpen((open) => !open)} /><div className="shape-tool-menu" aria-label="Shape tools">{SHAPE_TOOLS.map((name) => <ToolButton name={name} active={tool === name} onClick={() => { setTool(name); setShapeMenuOpen(false); }} key={name} />)}</div></div><span className="tool-separator" /><ToolButton name="fit" label="Fit map" onClick={fit} /><ToolButton name="reset" label="Reset view" onClick={() => setView({ x: 20, y: 20, zoom: 1 })} /><p className="map-tool-hint">Drag select<br />Ctrl C/V · Del<br />Double-click ping</p></nav>
