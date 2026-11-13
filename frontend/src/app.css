@@ -1586,6 +1586,20 @@ html[data-theme="simple"] .map-stage, html[data-theme="fantasy"] .map-stage { te
 .scene-sidebar-row[draggable="true"]:active { cursor: grabbing; }
 .scene-sidebar-row.viewed { border-color: #d9a952; }
 
+/* The narrow dock rail is icon-only; names remain available through aria labels and tooltips. */
+.table-sidebar > nav .sidebar-nav-icon {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.table-sidebar > nav button:hover .sidebar-nav-icon,
+.table-sidebar > nav button:focus-visible .sidebar-nav-icon { stroke-width: 2.2; }
+
 .character-pane { grid-template-rows: auto minmax(0, 1fr); }
 .character-hud { overflow-y: auto; padding: 14px; }
 .hud-identity { display: flex; align-items: center; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid #465464; }
