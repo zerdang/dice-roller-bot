@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 from functions.reference import ReferenceStore
 
 DEFAULT_COMMIT = "32ef600fab87a585a61dd1a22e9b02dfc58c728a"
-FILES = ["backgrounds.json", "races.json", "feats.json", "optionalfeatures.json", "charcreationoptions.json",
+FILES = ["books.json", "adventures.json", "backgrounds.json", "races.json", "feats.json", "optionalfeatures.json", "charcreationoptions.json",
          "items.json", "items-base.json", "conditionsdiseases.json", "actions.json", "skills.json", "languages.json", "senses.json"]
 
 

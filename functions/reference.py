@@ -29,6 +29,33 @@ FIELD_LABELS = {
     "classFeatures": "Class features", "subclassFeatures": "Subclass features",
 }
 
+# Names not represented by the catalog's books/adventures indexes. Imported
+# indexes remain the source of truth for ordinary books and adventures.
+SOURCE_NAME_OVERRIDES = {
+    "EEPC": "Elemental Evil Player's Companion",
+    "EET": "Elemental Evil: Trinkets",
+    "HAT-LMI": "Dungeons & Dragons: Honor Among Thieves — Legendary Magic Items",
+    "MCV2DC": "Monstrous Compendium Volume 2: Dragonlance Creatures",
+    "RoTOS": "The Rise of Tiamat: Online Supplement",
+    "TftYP": "Tales from the Yawning Portal",
+    "UATheMysticClass": "Unearthed Arcana: The Mystic Class",
+}
+
+
+def source_names(documents):
+    """Return catalog source codes mapped to their reader-facing titles."""
+    names = dict(SOURCE_NAME_OVERRIDES)
+    for document in documents:
+        for collection in ("book", "adventure"):
+            for item in document.get(collection, []):
+                code, name = item.get("id"), item.get("name")
+                if code and name:
+                    names[code] = name
+                    # Reference records use compact Plane Shift codes (PSA),
+                    # while the index uses dashed IDs (PS-A).
+                    names.setdefault(code.replace("-", ""), name)
+    return names
+
 
 def mechanical_text(value):
     labels = {"str": "Strength", "dex": "Dexterity", "con": "Constitution", "int": "Intelligence",
@@ -256,6 +283,7 @@ class ReferenceStore:
         report = {"version": version, "imported_at": datetime.now(timezone.utc).isoformat(),
                   "total": len(entries), "counts": dict(Counter(e["kind"] for e in entries)),
                   "sources": dict(Counter(e["source"] for e in entries)),
+                  "source_names": source_names(documents),
                   "editions": dict(Counter(e["edition"] for e in entries)),
                   "duplicates": duplicates, "files": files or [],
                   "review_required": [{"id": e["id"], "name": e["name"], "source": e["source"], "warnings": e["warnings"]} for e in entries if e["warnings"]]}
@@ -263,7 +291,14 @@ class ReferenceStore:
             # Version immutability keeps pinned references stable on repeat imports.
             existing = db.execute("SELECT report FROM reference_version WHERE id=?", (version,)).fetchone()
             if existing:
-                return json.loads(existing["report"])
+                report = json.loads(existing["report"])
+                names = source_names(documents)
+                if names and report.get("source_names") != names:
+                    # Reader-facing titles are index metadata, not catalog
+                    # content, so older pinned imports can be enriched safely.
+                    report["source_names"] = names
+                    db.execute("UPDATE reference_version SET report=? WHERE id=?", (json.dumps(report), version))
+                return report
             for entry in entries:
                 db.execute("INSERT INTO reference_entry VALUES(?,?,?,?,?,?,?,?,?,?)", (
                     version, entry["id"], entry["kind"], entry["name"], entry["source"], entry["edition"],
@@ -299,12 +334,16 @@ class ReferenceStore:
         with self.connect() as db:
             clauses, args, version = self.filters(db, auth, version)
             rows = db.execute("SELECT kind,source,edition,count(*) AS count FROM reference_entry e WHERE " + " AND ".join(clauses) + " GROUP BY kind,source,edition", args).fetchall()
+            report_row = db.execute("SELECT report FROM reference_version WHERE id=?", (version,)).fetchone()
+            catalog_names = SOURCE_NAME_OVERRIDES | (json.loads(report_row["report"]).get("source_names", {}) if report_row else {})
             result = {"version": version, "total": sum(r["count"] for r in rows),
                       "kinds": {r["kind"]: TYPES[r["kind"]] for r in rows},
                       "sources": sorted({r["source"] for r in rows}), "editions": sorted({r["edition"] for r in rows})}
             if auth["role"] == "warden":
                 result["all_sources"] = [r[0] for r in db.execute("SELECT DISTINCT source FROM reference_entry WHERE version=? ORDER BY source", (version,))]
                 result["allowed_sources"] = self.policy(db, auth["campaign_id"])
+            visible_sources = result.get("all_sources", result["sources"])
+            result["source_names"] = {source: catalog_names.get(source, source) for source in visible_sources}
             return result
 
     def set_policy(self, auth, sources):
