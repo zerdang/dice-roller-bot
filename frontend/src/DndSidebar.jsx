@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReferenceBrowser from "./ReferenceBrowser";
 import CharacterBuilder from "./CharacterBuilder";
+import CampaignSettings from "./CampaignSettings";
 
 const operationId = () => crypto.randomUUID();
 const clampSidebarWidth = value => Math.max(340, Math.min(window.innerWidth - 260, value));
@@ -216,6 +217,7 @@ function SidebarIcon({ name }) {
     log: <><path d="M4 5h16v12H9l-5 4z" /><path d="M8 9h8M8 13h6" /></>,
     scenes: <><path d="M4 6l5-2 6 2 5-2v14l-5 2-6-2-5 2z" /><path d="M9 4v14M15 6v14" /></>,
     selection: <path d="M6 3l12 11-6 .8 3.5 6-3 1.7-3.4-6-4 4z" />,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" /></>,
   };
   return <svg className="sidebar-nav-icon" viewBox="0 0 24 24" aria-hidden="true">{shapes[name]}</svg>;
 }
@@ -224,7 +226,7 @@ export default function DndSidebar({ dashboard, cards, roster, rolls, audience, 
   const storageKey = `dnd-sidebar:${dashboard.campaign?.id || "campaign"}`;
   const saved = (() => { try { return JSON.parse(localStorage.getItem(storageKey) || "{}"); } catch { return {}; } })();
   const isWarden = dashboard.role === "warden";
-  const tabs = isWarden ? ["log", "party", "scenes", "reference", "selection"] : ["character", "party", "log", "reference"];
+  const tabs = isWarden ? ["log", "party", "scenes", "reference", "selection", "settings"] : ["character", "party", "log", "reference"];
   const fallbackTab = isWarden ? "party" : "character";
   const savedWidth = Number(saved.width);
   const [width, setWidth] = useState(Number.isFinite(savedWidth) ? clampSidebarWidth(savedWidth) : 400);
@@ -237,7 +239,7 @@ export default function DndSidebar({ dashboard, cards, roster, rolls, audience, 
   useEffect(() => { const move = (event) => { if (dragRef.current) setWidth(clampSidebarWidth(dragRef.current.width + dragRef.current.x - event.clientX)); }; const up = () => { dragRef.current = null; document.body.classList.remove("resizing-dnd-dock"); }; window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); }; }, []);
   useEffect(() => { const openScenes = () => { setTab("scenes"); setCollapsed(false); }; window.addEventListener("dnd-open-scenes", openScenes); return () => window.removeEventListener("dnd-open-scenes", openScenes); }, []);
   const choose = (next) => { setTab(next); setCollapsed(false); };
-  const labels = { character: "My Character", party: "Party", log: "Game Log", scenes: "Scenes", reference: "Reference", selection: "Selection" };
+  const labels = { character: "My Character", party: "Party", log: "Game Log", scenes: "Scenes", reference: "Reference", selection: "Selection", settings: "Campaign Settings" };
   const activeName = dashboard.turn_order?.[0]?.name || "";
   const quickCard = roster.find((card) => card.id === quickCardId);
   return <aside className={`table-sidebar${collapsed ? " collapsed" : ""}`} style={{ width: collapsed ? 64 : width }}>
@@ -254,6 +256,7 @@ export default function DndSidebar({ dashboard, cards, roster, rolls, audience, 
       {tab === "log" && <GameLog cards={cards} rolls={rolls} role={dashboard.role} audience={audience} setAudience={setAudience} request={request} refresh={refresh} reportError={reportError} />}
       {tab === "scenes" && <SceneBrowser request={request} reportError={reportError} viewedSceneId={mapContext?.sceneId} />}
       {tab === "selection" && <section className="sidebar-pane selection-pane"><header><div><h2>Selection</h2><p>Contextual scene and token controls</p></div></header><div className="selection-scroll">{selectionPanel}</div></section>}
+      {tab === "settings" && <CampaignSettings request={request} reportError={reportError} />}
     </div>}
     {builderOpen && <CharacterBuilder request={request} isWarden={isWarden} onFinalized={() => refresh(true)} onClose={() => setBuilderOpen(false)} />}
   </aside>;

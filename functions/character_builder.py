@@ -16,7 +16,8 @@ SHORT = dict(zip(("str", "dex", "con", "int", "wis", "cha"), ABILITIES))
 SKILLS = {name.lower(): name for name in SKILL_ABILITIES}
 ARRAY = [15, 14, 13, 12, 10, 8]
 COST = {8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9}
-DEFAULT_POLICY = {"methods": ["array", "point_buy", "rolled"], "manual_review_required": True}
+DEFAULT_POLICY = {"methods": ["array", "point_buy", "rolled"], "manual_review_required": True,
+                  "flexible_background_abilities": False}
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS creation_draft (
  id TEXT PRIMARY KEY, campaign_id INTEGER NOT NULL, owner TEXT NOT NULL,
@@ -66,7 +67,7 @@ class CharacterBuilderStore(ReferenceStore):
     @staticmethod
     def campaign_policy(db, campaign):
         row = db.execute("SELECT revision,payload FROM creation_policy WHERE campaign_id=?", (campaign,)).fetchone()
-        return {"revision": row["revision"], **json.loads(row["payload"])} if row else {"revision": 0, **DEFAULT_POLICY}
+        return {"revision": row["revision"], **DEFAULT_POLICY, **json.loads(row["payload"])} if row else {"revision": 0, **DEFAULT_POLICY}
 
     def settings(self, auth):
         self.require_auth(auth)
@@ -82,12 +83,16 @@ class CharacterBuilderStore(ReferenceStore):
         methods = body.get("methods")
         if not isinstance(methods, list) or not methods or any(not isinstance(m, str) or m not in {"array", "point_buy", "rolled", "manual"} for m in methods):
             raise DndError("Choose at least one supported ability method")
+        flexible_background_abilities = body.get("flexible_background_abilities", False)
+        if type(flexible_background_abilities) is not bool:
+            raise DndError("Flexible background abilities must be true or false")
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             current = self.campaign_policy(db, auth["campaign_id"])
             if body.get("revision") != current["revision"]:
                 raise DndError("Creation settings changed; reload before saving", 409)
-            value = {"methods": sorted(set(methods)), "manual_review_required": True}
+            value = {"methods": sorted(set(methods)), "manual_review_required": True,
+                     "flexible_background_abilities": flexible_background_abilities}
             db.execute("INSERT OR REPLACE INTO creation_policy VALUES(?,?,?)", (auth["campaign_id"], current["revision"] + 1, json.dumps(value)))
         return self.settings(auth)
 
@@ -330,7 +335,7 @@ class CharacterBuilderStore(ReferenceStore):
             review.append("Manually entered ability scores require DM review.")
         background = selected["background"]
         eligible = list(ABILITIES)
-        if background and background["raw"].get("ability"):
+        if background and background["raw"].get("ability") and not settings["flexible_background_abilities"]:
             patterns = background["raw"]["ability"]
             eligible = sorted({SHORT[a] for p in patterns for a in p.get("choose", {}).get("weighted", {}).get("from", []) if a in SHORT})
             if not eligible:

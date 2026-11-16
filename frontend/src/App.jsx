@@ -7,6 +7,7 @@ import { catalogByCategory, catalogForSavedItem, catalogItem, equipmentPayload }
 import { ALL_SKILLS, canSelectSkill, CLASS_SKILLS, SKILL_BY_ID, SKILL_TIERS } from "./skills.js";
 import DndWorkspace from "./DndWorkspace.jsx";
 import { GAME_REGISTRY, preferredGame } from "./gameRegistry.js";
+import TableColumnResizer from "./TableColumnResizer.jsx";
 
 const METRIC_PAIRS = [
   ["Strength", "Sanity"], ["Speed", "Fear"], ["Intellect", "Body"], ["Combat", "Armor"],
@@ -1103,5 +1104,5 @@ export default function App() {
   if (phase === "loading") return <section className="boot" aria-live="polite"><span>DM SCREEN</span><p>Opening your table…</p><div /></section>;
   if (phase === "anonymous" || phase === "error") return <Landing error={phase === "error" ? "The server is temporarily unavailable." : authMessage} invite={invite} />;
   if (phase === "invite-error") return <CampaignHome account={account} reload={load} initialMessage={inviteError} signOut={() => { setAccount(null); setPhase("anonymous"); }} />;
-  return <CampaignHome account={account} reload={load} signOut={() => { setAccount(null); setPhase("anonymous"); }} />;
+  return <><TableColumnResizer /><CampaignHome account={account} reload={load} signOut={() => { setAccount(null); setPhase("anonymous"); }} /></>;
 }
