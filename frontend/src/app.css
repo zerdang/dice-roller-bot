@@ -2267,6 +2267,9 @@ html body .shell.dnd-shell::after { display: none; }
 .builder-score-help { margin: 8px 0; }
 .builder-score-help summary { cursor: pointer; color: #dbe7ef; }
 .builder-score-help p { margin: 6px 0 10px; }
+.builder-background-boost { display: grid; gap: 4px; margin: 12px 0; padding: 12px 14px; border: 1px solid #72d8ca; border-radius: 6px; background: #193b36; }
+.builder-background-boost strong { color: #d4fffa; font-size: 16px; }
+.builder-background-boost span { color: #dbe7ef; }
 .creation-abilities { display: grid; grid-template-columns: minmax(150px, 1.25fr) minmax(180px, 1fr) minmax(180px, 1fr) minmax(150px, .8fr); gap: 0; margin-top: 12px; border: 1px solid #526171; border-radius: 7px; overflow: hidden; }
 .creation-abilities-head, .creation-abilities article { display: contents; }
 .creation-abilities-head span { padding: 10px 14px; background: #31404b; color: #dbe7ef; font-size: 12px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
