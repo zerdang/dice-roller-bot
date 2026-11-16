@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export default function ReferenceBrowser({ request, isWarden, cards = [], onGrant }) {
@@ -18,21 +18,43 @@ export default function ReferenceBrowser({ request, isWarden, cards = [], onGran
   const [granting, setGranting] = useState(false);
   const [notice, setNotice] = useState("");
   const [hoverTip, setHoverTip] = useState(null);
+  const [conditionTip, setConditionTip] = useState(null);
+  const [conditions, setConditions] = useState({});
   const grantOperation = useRef(null);
   const menuRef = useRef(null);
   const detailRequest = useRef(0);
   const detailHeading = useRef(null);
   const launcher = useRef(null);
   const mounted = useRef(true);
-  const hoverTimer = useRef(null);
+  const hoverFetchTimer = useRef(null);
+  const hoverHoldTimer = useRef(null);
+  const hoverPinned = useRef(false);
   const hoverRequest = useRef(0);
   const hoverCache = useRef(new Map());
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; detailRequest.current++; hoverRequest.current++; clearTimeout(hoverTimer.current); }; }, []);
+  const conditionFetchTimer = useRef(null);
+  const conditionHoldTimer = useRef(null);
+  const conditionPinned = useRef(false);
+  const conditionRequest = useRef(0);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; detailRequest.current++; hoverRequest.current++; conditionRequest.current++; clearTimeout(hoverFetchTimer.current); clearTimeout(hoverHoldTimer.current); clearTimeout(conditionFetchTimer.current); clearTimeout(conditionHoldTimer.current); }; }, []);
   useEffect(() => {
     let active = true;
     request("/api/dnd/reference/meta").then(value => { if (active) setMeta(value); }).catch(e => { if (active) setError(e.message); });
     return () => { active = false; };
   }, [request]);
+  useEffect(() => {
+    if (!meta?.version) return undefined;
+    let active = true;
+    request("/api/dnd/reference?kind=condition&offset=0").then(value => {
+      if (!active) return;
+      const index = {};
+      value.items.forEach(item => {
+        const key = item.name.toLocaleLowerCase();
+        if (!index[key] || item.edition === "2024") index[key] = item;
+      });
+      setConditions(index);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [request, meta?.version]);
   useEffect(() => {
     if (!meta) return;
     let active = true;
@@ -55,27 +77,80 @@ export default function ReferenceBrowser({ request, isWarden, cards = [], onGran
     document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", escape); };
   }, [menu]);
+  useEffect(() => {
+    const escape = event => { if (event.key === "Escape" && (hoverPinned.current || conditionPinned.current)) { closeCondition(true); closeHover(true); } };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  });
+  const conditionPattern = useMemo(() => {
+    const names = Object.values(conditions).map(item => item.name).sort((a, b) => b.length - a.length);
+    return names.length ? new RegExp(`\\b(${names.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "gi") : null;
+  }, [conditions]);
   const filter = (key, value) => { setFilters(current => ({ ...current, [key]: value })); setOffset(0); };
-  const hideHover = () => { clearTimeout(hoverTimer.current); hoverRequest.current++; setHoverTip(null); };
+  function closeCondition(force = false) {
+    if (conditionPinned.current && !force) return;
+    clearTimeout(conditionFetchTimer.current); clearTimeout(conditionHoldTimer.current);
+    conditionRequest.current++; conditionPinned.current = false; setConditionTip(null);
+  }
+  function closeHover(force = false) {
+    if (hoverPinned.current && !force) return;
+    clearTimeout(hoverFetchTimer.current); clearTimeout(hoverHoldTimer.current);
+    hoverRequest.current++; hoverPinned.current = false; setHoverTip(null); closeCondition(true);
+  }
+  const hideHover = () => closeHover(false);
   const showHover = (item, target) => {
-    clearTimeout(hoverTimer.current);
+    closeHover(true);
     const sequence = ++hoverRequest.current;
     const rect = target.getBoundingClientRect();
     const width = Math.min(380, window.innerWidth - 24);
     const left = rect.right + width + 10 <= window.innerWidth ? rect.right + 8 : Math.max(12, rect.left - width - 8);
     const top = Math.max(12, Math.min(rect.top, window.innerHeight - 260));
-    hoverTimer.current = setTimeout(async () => {
-      const cached = hoverCache.current.get(item.id);
-      setHoverTip({ item, entry: cached || null, loading: !cached, left, top, width });
-      if (cached) return;
+    const cached = hoverCache.current.get(item.id);
+    setHoverTip({ item, entry: cached || null, loading: !cached, pinned: false, left, top, width });
+    hoverHoldTimer.current = setTimeout(() => {
+      if (sequence !== hoverRequest.current) return;
+      hoverPinned.current = true;
+      setHoverTip(current => current?.item.id === item.id ? { ...current, pinned: true } : current);
+    }, 1500);
+    if (!cached) hoverFetchTimer.current = setTimeout(async () => {
       try {
         const value = await request(`/api/dnd/reference/entries/${item.id}?version=${encodeURIComponent(results.version)}`);
         hoverCache.current.set(item.id, value);
-        if (sequence === hoverRequest.current) setHoverTip({ item, entry: value, loading: false, left, top, width });
+        if (sequence === hoverRequest.current) setHoverTip(current => current?.item.id === item.id ? { ...current, entry: value, loading: false } : current);
       } catch {
-        if (sequence === hoverRequest.current) setHoverTip(null);
+        if (sequence === hoverRequest.current) closeHover(true);
       }
-    }, 280);
+    }, 120);
+  };
+  const showCondition = (item, target) => {
+    closeCondition(true);
+    const sequence = ++conditionRequest.current;
+    const rect = target.getBoundingClientRect();
+    const width = Math.min(350, window.innerWidth - 24);
+    const left = rect.right + width + 10 <= window.innerWidth ? rect.right + 8 : Math.max(12, rect.left - width - 8);
+    const top = Math.max(12, Math.min(rect.top, window.innerHeight - 250));
+    const cached = hoverCache.current.get(item.id);
+    setConditionTip({ item, entry: cached || null, loading: !cached, pinned: false, left, top, width });
+    conditionHoldTimer.current = setTimeout(() => {
+      if (sequence !== conditionRequest.current) return;
+      conditionPinned.current = true;
+      setConditionTip(current => current?.item.id === item.id ? { ...current, pinned: true } : current);
+    }, 1500);
+    if (!cached) conditionFetchTimer.current = setTimeout(async () => {
+      try {
+        const value = await request(`/api/dnd/reference/entries/${item.id}?version=${encodeURIComponent(results.version)}`);
+        hoverCache.current.set(item.id, value);
+        if (sequence === conditionRequest.current) setConditionTip(current => current?.item.id === item.id ? { ...current, entry: value, loading: false } : current);
+      } catch { if (sequence === conditionRequest.current) closeCondition(true); }
+    }, 120);
+  };
+  const linkedDescription = text => {
+    const clean = text.replace(/\s+/g, " ").trim().slice(0, 900);
+    if (!conditionPattern) return clean;
+    return clean.split(conditionPattern).map((part, index) => {
+      const condition = conditions[part.toLocaleLowerCase()];
+      return condition ? <button type="button" className="reference-important-term" key={`${part}-${index}`} onMouseEnter={event => showCondition(condition, event.currentTarget)} onMouseLeave={() => closeCondition(false)} onFocus={event => showCondition(condition, event.currentTarget)} onBlur={() => closeCondition(false)} onClick={event => { closeCondition(true); closeHover(true); open(condition, event.currentTarget); }}>{part}</button> : part;
+    });
   };
   const open = async (item, target) => {
     launcher.current = target;
@@ -120,11 +195,19 @@ export default function ReferenceBrowser({ request, isWarden, cards = [], onGran
     <header><div><h2>Reference</h2><p>Classes, origins, spells, and rules</p></div>{entry && <><button type="button" onClick={e => openMenu(e, entry)}>Actions</button><button onClick={() => { setEntry(null); requestAnimationFrame(() => launcher.current?.focus()); }}>Back</button></>}</header>
     {error && <p role="alert" className="reference-error">{error}</p>}
     {notice && <p role="status" className="reference-notice">{notice}</p>}
-    {hoverTip && createPortal(<aside id="reference-hover-description" className="reference-hover-card" role="tooltip" style={{ left: hoverTip.left, top: hoverTip.top, width: hoverTip.width }}>
-      <header><strong>{hoverTip.item.name}</strong><span>{meta?.kinds?.[hoverTip.item.kind] || hoverTip.item.kind}</span></header>
+    {hoverTip && createPortal(<aside id="reference-hover-description" className={`reference-hover-card${hoverTip.pinned ? " pinned" : ""}`} role="tooltip" style={{ left: hoverTip.left, top: hoverTip.top, width: hoverTip.width }}>
+      <div className={`reference-hover-timer${hoverTip.pinned ? " complete" : ""}`} aria-label={hoverTip.pinned ? "Preview held open" : "Hold for 1.5 seconds to keep open"}><svg viewBox="0 0 32 32" aria-hidden="true"><circle className="timer-track" cx="16" cy="16" r="13" /><circle className="timer-progress" cx="16" cy="16" r="13" /></svg><span /></div>
+      <header><strong>{hoverTip.item.name}</strong><span>{meta?.kinds?.[hoverTip.item.kind] || hoverTip.item.kind}</span>{hoverTip.pinned && <button type="button" aria-label="Close reference preview" onClick={() => closeHover(true)}>×</button>}</header>
       <small>{meta?.source_names?.[hoverTip.item.source] || hoverTip.item.source}{meta?.source_names?.[hoverTip.item.source] !== hoverTip.item.source ? ` (${hoverTip.item.source})` : ""}</small>
-      {hoverTip.loading ? <p>Loading description…</p> : <p>{(hoverTip.entry?.text || "No standalone description is available. Open the entry for its structured details.").replace(/\s+/g, " ").trim().slice(0, 900)}{hoverTip.entry?.text?.length > 900 ? "…" : ""}</p>}
-      <em>Click the name for complete details.</em>
+      {hoverTip.loading ? <p>Loading description…</p> : <p>{linkedDescription(hoverTip.entry?.text || "No standalone description is available. Open the entry for its structured details.")}{hoverTip.entry?.text?.length > 900 ? "…" : ""}</p>}
+      <em>{hoverTip.pinned ? "Underlined terms open linked rules. Press Escape to close." : "Keep hovering until the ring fills to interact."}</em>
+    </aside>, document.body)}
+    {conditionTip && createPortal(<aside className={`reference-hover-card reference-condition-card${conditionTip.pinned ? " pinned" : ""}`} role="tooltip" style={{ left: conditionTip.left, top: conditionTip.top, width: conditionTip.width }}>
+      <div className={`reference-hover-timer${conditionTip.pinned ? " complete" : ""}`} aria-label={conditionTip.pinned ? "Condition preview held open" : "Hold for 1.5 seconds to keep open"}><svg viewBox="0 0 32 32" aria-hidden="true"><circle className="timer-track" cx="16" cy="16" r="13" /><circle className="timer-progress" cx="16" cy="16" r="13" /></svg><span /></div>
+      <header><strong>{conditionTip.item.name}</strong><span>Condition</span>{conditionTip.pinned && <button type="button" aria-label="Close condition preview" onClick={() => closeCondition(true)}>×</button>}</header>
+      <small>{meta?.source_names?.[conditionTip.item.source] || conditionTip.item.source}</small>
+      {conditionTip.loading ? <p>Loading condition…</p> : <p>{linkedDescription(conditionTip.entry?.text || "Open the condition for complete rules.")}{conditionTip.entry?.text?.length > 900 ? "…" : ""}</p>}
+      <em>Click the underlined term for the complete condition entry.</em>
     </aside>, document.body)}
     <div className="reference-scroll" hidden={Boolean(entry)}>
       <label>Search<input type="search" placeholder="Name or rules text…" value={filters.q} onChange={e => filter("q", e.target.value)} /></label>

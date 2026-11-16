@@ -2094,13 +2094,31 @@ html body .shell.dnd-shell::after { display: none; }
 .reference-result-table td span, .reference-result-table small { display: block; }
 .reference-result-table small { color: #adc0cf; font-size: 9px; }
 .reference-result-table tbody th small, .reference-warning { color: #ffe09b; }
-.reference-hover-card { position: fixed; z-index: 1200; max-height: min(360px, calc(100vh - 24px)); overflow: hidden; padding: 13px 14px; border: 1px solid #72d8ca; border-radius: 7px; background: #18252f; color: #f4f7fa; box-shadow: 0 14px 38px #000c, inset 3px 0 0 #72d8ca; pointer-events: none; }
+.reference-hover-card { position: fixed; z-index: 1200; max-height: min(360px, calc(100vh - 24px)); overflow: hidden; padding: 13px 52px 13px 14px; border: 1px solid #72d8ca; border-radius: 7px; background: #18252f; color: #f4f7fa; box-shadow: 0 14px 38px #000c, inset 3px 0 0 #72d8ca; pointer-events: none; }
+.reference-hover-card.pinned { overflow-y: auto; pointer-events: auto; }
+.reference-condition-card { z-index: 1210; border-color: #e8b85c; box-shadow: 0 14px 38px #000c, inset 3px 0 0 #e8b85c; }
 .reference-hover-card header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 3px; }
 .reference-hover-card header strong { overflow-wrap: anywhere; color: #d4fffa; font-size: 14px; }
 .reference-hover-card header span, .reference-hover-card > small { color: #a8c9c4; font-size: 10px; }
+.reference-hover-card header button { min-width: 24px; min-height: 24px; padding: 0; border: 0; background: transparent; color: #dbe7ef; font-size: 18px; line-height: 1; }
 .reference-hover-card > small { display: block; }
 .reference-hover-card p { display: -webkit-box; margin: 10px 0; overflow: hidden; color: #dbe7ef; font-size: 12px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 12; }
+.reference-hover-card.pinned p { display: block; overflow: visible; }
 .reference-hover-card em { color: #9fb0bd; font-size: 10px; font-style: normal; }
+.reference-hover-timer { position: absolute; top: 11px; right: 11px; display: grid; width: 32px; height: 32px; place-items: center; }
+.reference-hover-timer svg { position: absolute; inset: 0; width: 32px; height: 32px; transform: rotate(-90deg); }
+.reference-hover-timer circle { fill: none; stroke-width: 4; }
+.reference-hover-timer .timer-track { stroke: #40505e; }
+.reference-hover-timer .timer-progress { stroke: #72d8ca; stroke-linecap: round; stroke-dasharray: 82; stroke-dashoffset: 82; animation: reference-hover-hold 1.5s linear forwards; }
+.reference-hover-timer span { position: relative; z-index: 1; color: #c7d8e4; font-size: 8px; font-weight: 700; }
+.reference-hover-timer span::after { content: "1.5"; }
+.reference-hover-timer.complete .timer-progress { stroke-dashoffset: 0; animation: none; }
+.reference-hover-timer.complete span::after { content: "✓"; color: #a9ead9; font-size: 12px; }
+.reference-condition-card .reference-hover-timer .timer-track { stroke: #554b3c; }
+.reference-condition-card .reference-hover-timer .timer-progress { stroke: #e8b85c; }
+.reference-important-term { display: inline; min-height: 0; margin: 0; padding: 0 1px; border: 0; border-bottom: 1px dotted #8de4d8; border-radius: 0; background: transparent; color: #b7fff4; font: inherit; line-height: inherit; text-transform: none; cursor: help; }
+.reference-important-term:hover, .reference-important-term:focus-visible { background: #31524e; color: #fff; text-decoration: none; }
+@keyframes reference-hover-hold { to { stroke-dashoffset: 0; } }
 .reference-detail h3 { margin-top: 0; font-size: 22px; overflow-wrap: anywhere; }
 .reference-text { white-space: pre-wrap; overflow-wrap: anywhere; font: 15px/1.65 Inter, "Segoe UI", sans-serif; }
 .reference-pagination, .reference-policy-actions { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 12px; }
