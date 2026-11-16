@@ -470,7 +470,7 @@ class CharacterBuilderStore(ReferenceStore):
                 "SELECT 1 FROM reference_spell_class WHERE version=? AND lower(class_source)=lower(?) AND lower(class_name)=lower(?) LIMIT 1",
                 (row["version"], cls["source"], cls["name"])).fetchone())
             if not spell_eligibility_ready:
-                error("spells", "Spell-list data is unavailable. Ask the DM to re-import the reference catalog.")
+                review.append("Class spell-list filtering is unavailable for this catalog; verify selected spells against the class source.")
         spells = []
         for spell_id in payload.get("spell_ids", []):
             spell = self.selected(db, auth, row["version"], spell_id, {"spell"})
@@ -562,7 +562,10 @@ class CharacterBuilderStore(ReferenceStore):
                 cls = self.selected(db, auth, version, payload.get("class_id"), {"class"})
                 if not cls or not any(self.class_spell_limits(cls).values()):
                     return {"version": version, "total": 0, "items": []}
-                eligible_class = (cls["source"], cls["name"])
+                if db.execute(
+                        "SELECT 1 FROM reference_spell_class WHERE version=? AND lower(class_source)=lower(?) AND lower(class_name)=lower(?) LIMIT 1",
+                        (version, cls["source"], cls["name"])).fetchone():
+                    eligible_class = (cls["source"], cls["name"])
         return self.search(auth, query=query, kind=kind, source=source, edition=edition,
                            offset=offset, limit=60, version=version, level=level, school=school,
                            eligible_class=eligible_class)
