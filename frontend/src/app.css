@@ -2094,6 +2094,13 @@ html body .shell.dnd-shell::after { display: none; }
 .reference-result-table td span, .reference-result-table small { display: block; }
 .reference-result-table small { color: #adc0cf; font-size: 9px; }
 .reference-result-table tbody th small, .reference-warning { color: #ffe09b; }
+.reference-hover-card { position: fixed; z-index: 1200; max-height: min(360px, calc(100vh - 24px)); overflow: hidden; padding: 13px 14px; border: 1px solid #72d8ca; border-radius: 7px; background: #18252f; color: #f4f7fa; box-shadow: 0 14px 38px #000c, inset 3px 0 0 #72d8ca; pointer-events: none; }
+.reference-hover-card header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 3px; }
+.reference-hover-card header strong { overflow-wrap: anywhere; color: #d4fffa; font-size: 14px; }
+.reference-hover-card header span, .reference-hover-card > small { color: #a8c9c4; font-size: 10px; }
+.reference-hover-card > small { display: block; }
+.reference-hover-card p { display: -webkit-box; margin: 10px 0; overflow: hidden; color: #dbe7ef; font-size: 12px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 12; }
+.reference-hover-card em { color: #9fb0bd; font-size: 10px; font-style: normal; }
 .reference-detail h3 { margin-top: 0; font-size: 22px; overflow-wrap: anywhere; }
 .reference-text { white-space: pre-wrap; overflow-wrap: anywhere; font: 15px/1.65 Inter, "Segoe UI", sans-serif; }
 .reference-pagination, .reference-policy-actions { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 12px; }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export default function ReferenceBrowser({ request, isWarden, cards = [], onGrant }) {
   const [meta, setMeta] = useState(null);
@@ -16,13 +17,17 @@ export default function ReferenceBrowser({ request, isWarden, cards = [], onGran
   const [quantity, setQuantity] = useState(1);
   const [granting, setGranting] = useState(false);
   const [notice, setNotice] = useState("");
+  const [hoverTip, setHoverTip] = useState(null);
   const grantOperation = useRef(null);
   const menuRef = useRef(null);
   const detailRequest = useRef(0);
   const detailHeading = useRef(null);
   const launcher = useRef(null);
   const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; detailRequest.current++; }; }, []);
+  const hoverTimer = useRef(null);
+  const hoverRequest = useRef(0);
+  const hoverCache = useRef(new Map());
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; detailRequest.current++; hoverRequest.current++; clearTimeout(hoverTimer.current); }; }, []);
   useEffect(() => {
     let active = true;
     request("/api/dnd/reference/meta").then(value => { if (active) setMeta(value); }).catch(e => { if (active) setError(e.message); });
@@ -51,6 +56,27 @@ export default function ReferenceBrowser({ request, isWarden, cards = [], onGran
     return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", escape); };
   }, [menu]);
   const filter = (key, value) => { setFilters(current => ({ ...current, [key]: value })); setOffset(0); };
+  const hideHover = () => { clearTimeout(hoverTimer.current); hoverRequest.current++; setHoverTip(null); };
+  const showHover = (item, target) => {
+    clearTimeout(hoverTimer.current);
+    const sequence = ++hoverRequest.current;
+    const rect = target.getBoundingClientRect();
+    const width = Math.min(380, window.innerWidth - 24);
+    const left = rect.right + width + 10 <= window.innerWidth ? rect.right + 8 : Math.max(12, rect.left - width - 8);
+    const top = Math.max(12, Math.min(rect.top, window.innerHeight - 260));
+    hoverTimer.current = setTimeout(async () => {
+      const cached = hoverCache.current.get(item.id);
+      setHoverTip({ item, entry: cached || null, loading: !cached, left, top, width });
+      if (cached) return;
+      try {
+        const value = await request(`/api/dnd/reference/entries/${item.id}?version=${encodeURIComponent(results.version)}`);
+        hoverCache.current.set(item.id, value);
+        if (sequence === hoverRequest.current) setHoverTip({ item, entry: value, loading: false, left, top, width });
+      } catch {
+        if (sequence === hoverRequest.current) setHoverTip(null);
+      }
+    }, 280);
+  };
   const open = async (item, target) => {
     launcher.current = target;
     const sequence = ++detailRequest.current;
@@ -94,6 +120,12 @@ export default function ReferenceBrowser({ request, isWarden, cards = [], onGran
     <header><div><h2>Reference</h2><p>Classes, origins, spells, and rules</p></div>{entry && <><button type="button" onClick={e => openMenu(e, entry)}>Actions</button><button onClick={() => { setEntry(null); requestAnimationFrame(() => launcher.current?.focus()); }}>Back</button></>}</header>
     {error && <p role="alert" className="reference-error">{error}</p>}
     {notice && <p role="status" className="reference-notice">{notice}</p>}
+    {hoverTip && createPortal(<aside id="reference-hover-description" className="reference-hover-card" role="tooltip" style={{ left: hoverTip.left, top: hoverTip.top, width: hoverTip.width }}>
+      <header><strong>{hoverTip.item.name}</strong><span>{meta?.kinds?.[hoverTip.item.kind] || hoverTip.item.kind}</span></header>
+      <small>{meta?.source_names?.[hoverTip.item.source] || hoverTip.item.source}{meta?.source_names?.[hoverTip.item.source] !== hoverTip.item.source ? ` (${hoverTip.item.source})` : ""}</small>
+      {hoverTip.loading ? <p>Loading description…</p> : <p>{(hoverTip.entry?.text || "No standalone description is available. Open the entry for its structured details.").replace(/\s+/g, " ").trim().slice(0, 900)}{hoverTip.entry?.text?.length > 900 ? "…" : ""}</p>}
+      <em>Click the name for complete details.</em>
+    </aside>, document.body)}
     <div className="reference-scroll" hidden={Boolean(entry)}>
       <label>Search<input type="search" placeholder="Name or rules text…" value={filters.q} onChange={e => filter("q", e.target.value)} /></label>
       <div className="reference-filters">
@@ -104,7 +136,7 @@ export default function ReferenceBrowser({ request, isWarden, cards = [], onGran
       {isWarden && meta && <details><summary>Campaign reference sources</summary><p>Choose which books and adventures everyone in this campaign can search.</p><div className="reference-source-list"><table><colgroup><col className="source-enabled-column" /><col /><col className="source-code-column" /></colgroup><thead><tr><th>Use</th><th>Full source name</th><th>Code</th></tr></thead><tbody>{meta.all_sources.map(source => { const enabled = editingPolicy ? policy.includes(source) : meta.allowed_sources === null || meta.allowed_sources.includes(source); return <tr className={enabled ? "selected" : ""} key={source}><td><input type="checkbox" aria-label={`${enabled ? "Disable" : "Enable"} ${meta.source_names?.[source] || source}`} checked={enabled} disabled={!editingPolicy} onChange={e => setPolicy(current => e.target.checked ? [...current, source] : current.filter(item => item !== source))} /></td><th scope="row">{meta.source_names?.[source] || source}</th><td><code>{source}</code></td></tr>; })}</tbody></table></div><div className="reference-policy-actions">{editingPolicy ? <><button disabled={saving} onClick={() => savePolicy(policy)}>Save selection</button><button disabled={saving} onClick={() => savePolicy(null)}>Allow all sources</button><button disabled={saving} onClick={() => { setPolicy([]); setEditingPolicy(false); }}>Cancel</button></> : <button onClick={() => { setPolicy(meta.allowed_sources ?? meta.all_sources); setEditingPolicy(true); }}>Edit enabled sources</button>}</div></details>}
       {!meta ? <p>Loading reference library…</p> : !meta.version ? <p>The reference library has not been loaded yet. Ask your DM to set it up.</p> : <>
         <p role="status">{loading ? "Searching…" : `${results.total.toLocaleString()} results`}</p>
-        <div className="reference-result-list" aria-busy={loading}><table className="reference-result-table"><colgroup><col className="result-name-column" /><col className="result-category-column" /><col /></colgroup><thead><tr><th>Name</th><th>Category</th><th>Full source name</th></tr></thead><tbody>{results.items.map(item => <tr key={item.id} onContextMenu={e => openMenu(e, item)} title="Right-click for actions"><th scope="row"><button type="button" onClick={e => open(item, e.currentTarget)} onKeyDown={e => { if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) openMenu(e, item); }} aria-label={`${item.name}; open details or use context menu for actions`}>{item.name}</button>{item.warnings.length > 0 && <small>Source review needed</small>}</th><td>{meta.kinds[item.kind]}</td><td><span>{meta.source_names?.[item.source] || item.source}</span><small>{item.source}</small></td></tr>)}</tbody></table></div>
+        <div className="reference-result-list" aria-busy={loading}><table className="reference-result-table"><colgroup><col className="result-name-column" /><col className="result-category-column" /><col /></colgroup><thead><tr><th>Name</th><th>Category</th><th>Full source name</th></tr></thead><tbody>{results.items.map(item => <tr key={item.id} onMouseEnter={e => showHover(item, e.currentTarget)} onMouseLeave={hideHover} onFocus={e => showHover(item, e.currentTarget)} onBlur={hideHover} onContextMenu={e => { hideHover(); openMenu(e, item); }}><th scope="row"><button type="button" onClick={e => { hideHover(); open(item, e.currentTarget); }} onKeyDown={e => { if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) { hideHover(); openMenu(e, item); } }} aria-describedby={hoverTip?.item.id === item.id ? "reference-hover-description" : undefined} aria-label={`${item.name}; hover for a description, open details, or use the context menu for actions`}>{item.name}</button>{item.warnings.length > 0 && <small>Source review needed</small>}</th><td>{meta.kinds[item.kind]}</td><td><span>{meta.source_names?.[item.source] || item.source}</span><small>{item.source}</small></td></tr>)}</tbody></table></div>
         {!loading && results.total === 0 && <p>No matching entries. Try another name or clear a filter.</p>}
         <nav className="reference-pagination" aria-label="Reference results pages"><button disabled={loading || offset === 0} onClick={() => setOffset(Math.max(0, offset - 30))}>Previous</button><span>Page {Math.floor(offset / 30) + 1}</span><button disabled={loading || offset + 30 >= results.total} onClick={() => setOffset(offset + 30)}>Next</button></nav>
       </>}
