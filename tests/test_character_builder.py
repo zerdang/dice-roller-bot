@@ -153,6 +153,19 @@ class CharacterBuilderTests(unittest.TestCase):
         self.assertTrue(any("class grants 0" in error["message"] for error in preview["errors"]))
         self.assertEqual(["Light"], [spell["name"] for spell in preview["innate_spells"]])
 
+    def test_missing_spell_lookup_falls_back_to_review_without_blocking(self):
+        draft = self.caster_draft()
+        with self.store.connect() as db:
+            db.execute("DELETE FROM reference_spell_class WHERE version=?", (self.version,))
+        options = self.store.options(self.player, self.created["id"], "spell", level="1")
+        self.assertEqual(["Sample Shield"], [item["name"] for item in options["items"]])
+        spark = next(item for item in self.store.search(self.player, kind="spell", level="0")["items"] if item["name"] == "Sample Spark")
+        draft["spell_ids"] = [spark["id"], options["items"][0]["id"]]
+        preview = self.evaluate(draft)
+        self.assertEqual([], preview["errors"])
+        self.assertFalse(preview["spell_eligibility_ready"])
+        self.assertTrue(any("spell-list filtering is unavailable" in message for message in preview["review"]))
+
     def test_dm_finalization_is_atomic_retry_safe_and_preserves_prior_sheet(self):
         CompanionStore(self.store.path)
         DndStore(self.store.path)
