@@ -29,16 +29,103 @@ FIELD_LABELS = {
     "classFeatures": "Class features", "subclassFeatures": "Subclass features",
 }
 
-# Names not represented by the catalog's books/adventures indexes. Imported
-# indexes remain the source of truth for ordinary books and adventures.
+# Built-in titles keep existing catalogs readable before they are re-imported.
+# Imported book/adventure indexes can extend or replace these values.
 SOURCE_NAME_OVERRIDES = {
+    "AAG": "Astral Adventurer's Guide",
+    "ABH": "Astarion's Book of Hungers",
+    "AI": "Acquisitions Incorporated",
+    "AU": "Arcana Unleashed",
+    "AUD": "Arcana Unleashed: Deadfall",
+    "AWM": "Adventure with Muk",
+    "AZfyT": "A Zib for Your Thoughts",
+    "AitFR-AVT": "Adventures in the Forgotten Realms: A Verdant Tomb",
+    "AitFR-THP": "Adventures in the Forgotten Realms: The Hidden Page",
+    "BAM": "Boo's Astral Menagerie",
+    "BGDIA": "Baldur's Gate: Descent Into Avernus",
+    "BGG": "Bigby Presents: Glory of the Giants",
+    "BMT": "The Book of Many Things",
+    "CM": "Candlekeep Mysteries",
+    "CRCotN": "Critical Role: Call of the Netherdeep",
+    "CoA": "Chains of Asmodeus",
+    "CoS": "Curse of Strahd",
+    "DC": "Essentials Kit: Divine Contention",
+    "DMG": "Dungeon Master's Guide (2014)",
+    "DSotDQ": "Dragonlance: Shadow of the Dragon Queen",
+    "DitLCoT": "Descent into the Lost Caverns of Tsojcanth",
     "EEPC": "Elemental Evil Player's Companion",
     "EET": "Elemental Evil: Trinkets",
+    "EFA": "Eberron: Forge of the Artificer",
+    "EGW": "Explorer's Guide to Wildemount",
+    "ERLW": "Eberron: Rising from the Last War",
+    "FRAiF": "Forgotten Realms: Adventures in Faerûn",
+    "FRHoF": "Forgotten Realms: Heroes of Faerûn",
+    "FTD": "Fizban's Treasury of Dragons",
+    "GGR": "Guildmasters' Guide to Ravnica",
+    "GoS": "Ghosts of Saltmarsh",
     "HAT-LMI": "Dungeons & Dragons: Honor Among Thieves — Legendary Magic Items",
+    "HftT": "Hunt for the Thessalhydra",
+    "HotB": "Heroes of the Borderlands",
+    "HotDQ": "Hoard of the Dragon Queen",
+    "ICC": "World of Warcraft: Icecrown Citadel",
+    "IDRotF": "Icewind Dale: Rime of the Frostmaiden",
+    "IMR": "Infernal Machine Rebuild",
+    "JttRC": "Journeys through the Radiant Citadel",
+    "KftGV": "Keys from the Golden Vault",
+    "LFL": "Lorwyn: First Light",
+    "LLK": "Lost Laboratory of Kwalish",
+    "LMoP": "Lost Mine of Phandelver",
+    "LR": "Locathah Rising",
+    "LoX": "Light of Xaryxis",
     "MCV2DC": "Monstrous Compendium Volume 2: Dragonlance Creatures",
+    "MM": "Monster Manual (2014)",
+    "MOT": "Mythic Odysseys of Theros",
+    "MPMM": "Mordenkainen Presents: Monsters of the Multiverse",
+    "MTF": "Mordenkainen's Tome of Foes",
+    "NF": "Netheril's Fall",
+    "NRH-AT": "NERDS Restoring Harmony: Adventure Together",
+    "NRH-TLT": "NERDS Restoring Harmony: The Lost Tomb",
+    "OGA": "One Grung Above",
+    "OotA": "Out of the Abyss",
+    "PHB": "Player's Handbook (2014)",
+    "PL": "Project_Lamordia",
+    "PSA": "Plane Shift: Amonkhet",
+    "PSD": "Plane Shift: Dominaria",
+    "PSI": "Plane Shift: Innistrad",
+    "PSK": "Plane Shift: Kaladesh",
+    "PSX": "Plane Shift: Ixalan",
+    "PSZ": "Plane Shift: Zendikar",
+    "PaBTSO": "Phandelver and Below: The Shattered Obelisk",
+    "PotA": "Princes of the Apocalypse",
+    "QftIS": "Quests from the Infinite Staircase",
+    "RHW": "Ravenloft: The Horrors Within",
+    "RMBRE": "The Lost Dungeon of Rickedness: Big Rick Energy",
+    "RoT": "Rise of Tiamat",
     "RoTOS": "The Rise of Tiamat: Online Supplement",
+    "SCAG": "Sword Coast Adventurer's Guide",
+    "SCC": "Strixhaven: A Curriculum of Chaos",
+    "SDW": "Essentials Kit: Sleeping Dragon's Wake",
+    "SKT": "Storm King's Thunder",
+    "SatO": "Sigil and the Outlands",
+    "TCE": "Tasha's Cauldron of Everything",
+    "TTP": "The Tortle Package",
     "TftYP": "Tales from the Yawning Portal",
+    "ToA": "Tomb of Annihilation",
     "UATheMysticClass": "Unearthed Arcana: The Mystic Class",
+    "UtHftLH": "Uni and the Hunt for the Lost Horn",
+    "VEoR": "Vecna: Eve of Ruin",
+    "VGM": "Volo's Guide to Monsters",
+    "VRGR": "Van Richten's Guide to Ravenloft",
+    "WBtW": "The Wild Beyond the Witchlight",
+    "WDH": "Waterdeep: Dragon Heist",
+    "WDMM": "Waterdeep: Dungeon of the Mad Mage",
+    "WoW": "World of Warcraft",
+    "WttHC": "Stranger Things: Welcome to the Hellfire Club",
+    "XDMG": "Dungeon Master's Guide (2024)",
+    "XGE": "Xanathar's Guide to Everything",
+    "XMM": "Monster Manual (2025)",
+    "XMtS": "X Marks the Spot",
+    "XPHB": "Player's Handbook (2024)",
 }
 
 
@@ -130,8 +217,35 @@ CREATE TABLE IF NOT EXISTS reference_entry (
 );
 CREATE INDEX IF NOT EXISTS reference_filter ON reference_entry(version,kind,source,edition);
 CREATE VIRTUAL TABLE IF NOT EXISTS reference_search USING fts5(version UNINDEXED, id UNINDEXED, name, text, tokenize='unicode61');
+CREATE TABLE IF NOT EXISTS reference_spell_class (
+ version TEXT NOT NULL, spell_source TEXT NOT NULL, spell_name TEXT NOT NULL,
+ class_source TEXT NOT NULL, class_name TEXT NOT NULL,
+ PRIMARY KEY(version,spell_source,spell_name,class_source,class_name)
+);
+CREATE INDEX IF NOT EXISTS reference_spell_class_lookup ON reference_spell_class(version,class_source,class_name);
 CREATE TABLE IF NOT EXISTS reference_policy (campaign_id INTEGER PRIMARY KEY, sources TEXT);
 """
+
+
+def spell_class_links(documents):
+    """Flatten the generated 5etools spell-source lookup without exposing it to clients."""
+    links = set()
+    for document in documents:
+        lookup = document.get("_spellSourceLookup") if isinstance(document, dict) else None
+        if not isinstance(lookup, dict):
+            continue
+        for spell_source, spells in lookup.items():
+            if not isinstance(spells, dict):
+                continue
+            for spell_name, eligibility in spells.items():
+                if not isinstance(eligibility, dict):
+                    continue
+                for group_name in ("class", "classVariant"):
+                    for class_source, classes in (eligibility.get(group_name) or {}).items():
+                        if isinstance(classes, dict):
+                            links.update((str(spell_source), str(spell_name), str(class_source), str(class_name))
+                                         for class_name, enabled in classes.items() if enabled)
+    return sorted(links)
 
 
 def identity(kind, record):
@@ -278,6 +392,7 @@ class ReferenceStore:
         if not re.fullmatch(r"[0-9a-f]{40}", version):
             raise ValueError("An exact upstream commit SHA is required")
         entries, duplicates = normalize(documents)
+        spell_links = spell_class_links(documents)
         if not entries:
             raise ValueError("No reference entries found; active catalog unchanged")
         report = {"version": version, "imported_at": datetime.now(timezone.utc).isoformat(),
@@ -298,6 +413,9 @@ class ReferenceStore:
                     # content, so older pinned imports can be enriched safely.
                     report["source_names"] = names
                     db.execute("UPDATE reference_version SET report=? WHERE id=?", (json.dumps(report), version))
+                if spell_links:
+                    db.executemany("INSERT OR IGNORE INTO reference_spell_class VALUES(?,?,?,?,?)",
+                                   [(version, *link) for link in spell_links])
                 return report
             for entry in entries:
                 db.execute("INSERT INTO reference_entry VALUES(?,?,?,?,?,?,?,?,?,?)", (
@@ -305,6 +423,9 @@ class ReferenceStore:
                     str(entry["page"]) if entry["page"] is not None else None, entry["text"],
                     json.dumps(entry["raw"]), json.dumps(entry["warnings"])))
                 db.execute("INSERT INTO reference_search VALUES(?,?,?,?)", (version, entry["id"], entry["name"], entry["text"]))
+            if spell_links:
+                db.executemany("INSERT INTO reference_spell_class VALUES(?,?,?,?,?)",
+                               [(version, *link) for link in spell_links])
             db.execute("INSERT INTO reference_version VALUES(?,?)", (version, json.dumps(report)))
             db.execute("INSERT OR REPLACE INTO reference_active VALUES(1,?)", (version,))
         return report
@@ -356,7 +477,7 @@ class ReferenceStore:
             db.execute("INSERT OR REPLACE INTO reference_policy VALUES(?,?)", (auth["campaign_id"], json.dumps(sorted(set(sources))) if sources is not None else None))
         return self.metadata(auth)
 
-    def search(self, auth, query="", kind="", source="", edition="", offset=0, limit=30, version=None, level="", school=""):
+    def search(self, auth, query="", kind="", source="", edition="", offset=0, limit=30, version=None, level="", school="", eligible_class=None):
         if len(query) > 200 or offset < 0 or not 1 <= limit <= 100:
             raise DndError("Invalid search bounds")
         if level and (kind != "spell" or level not in {str(value) for value in range(10)}):
@@ -375,6 +496,14 @@ class ReferenceStore:
             if school:
                 clauses.append("json_extract(e.raw, '$.school')=?")
                 args.append(school)
+            if eligible_class:
+                clauses.append("""EXISTS (SELECT 1 FROM reference_spell_class sc
+                    WHERE sc.version=e.version
+                    AND lower(sc.spell_source)=lower(e.source)
+                    AND lower(sc.spell_name)=lower(e.name)
+                    AND lower(sc.class_source)=lower(?)
+                    AND lower(sc.class_name)=lower(?))""")
+                args.extend(eligible_class)
             words = re.findall(r"\w+", query, re.UNICODE)
             if query.strip() and not words:
                 return {"version": version, "total": 0, "items": []}

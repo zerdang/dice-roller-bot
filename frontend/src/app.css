@@ -17,7 +17,7 @@
 }
 
 /* D&D 5e (2024) Release 1 workspace */
-.dnd-workspace { display: block; min-width: 0; }
+.dnd-workspace { display: block; min-width: 0; height: 100%; padding-top: 0; }
 .dnd-tabs { display: flex; gap: .5rem; padding: .65rem 1rem; border-bottom: 1px solid var(--line, #48605b); }
 .dnd-tabs button.active { border-color: var(--accent, #4fc3a1); color: var(--accent, #4fc3a1); }
 .dnd-map-shell { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: .75rem; padding: .75rem; }
@@ -1523,7 +1523,6 @@ html[data-theme="simple"] .map-stage, html[data-theme="fantasy"] .map-stage { te
 .table-sidebar > nav button { min-width: 48px; min-height: 48px; padding: 5px 3px; }
 .table-sidebar > nav button span { font-size: 12px; font-weight: 800; letter-spacing: .02em; }
 .table-sidebar > nav button b { font-size: 10px; line-height: 1.15; }
-.table-sidebar > nav .dock-reset { margin-top: auto; }
 .dock-resize-handle { position: absolute; z-index: 8; top: 0; bottom: 0; left: -5px; width: 10px; min-height: 0 !important; padding: 0; border: 0; background: transparent; cursor: ew-resize; }
 .dock-resize-handle::after { content: ""; position: absolute; top: 42%; bottom: 42%; left: 3px; width: 3px; border-radius: 3px; background: #718092; opacity: .65; }
 .dock-resize-handle:hover::after,
@@ -2070,7 +2069,6 @@ html body .shell.dnd-shell::after { display: none; }
 .table-sidebar:not(.collapsed) { grid-template-columns: minmax(0, 1fr); grid-template-rows: 58px minmax(0, 1fr); }
 .table-sidebar:not(.collapsed) > nav { width: 100%; min-width: 0; flex-direction: row; align-items: center; gap: 4px; padding: 5px 7px; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid #394352; }
 .table-sidebar:not(.collapsed) > nav button { flex: 0 0 44px; min-width: 44px; min-height: 44px; }
-.table-sidebar:not(.collapsed) > nav .dock-reset { margin-top: 0; margin-left: auto; }
 .table-sidebar.collapsed > nav button:not(:first-child) { display: none; }
 .table-sidebar.collapsed > nav { width: 64px; height: 100%; overflow: hidden; }
 .table-sidebar .sidebar-content { grid-row: 2; height: auto; min-height: 0; }
@@ -2089,6 +2087,8 @@ html body .shell.dnd-shell::after { display: none; }
 .reference-result-table tbody tr:nth-child(even), .reference-source-list tbody tr:nth-child(even) { background: #202c36; }
 .reference-result-table tbody tr:hover { background: #293944; }
 .reference-result-table tbody th { min-width: 130px; }
+.reference-result-table .result-name-column { width: 42%; }
+.reference-result-table .result-category-column { width: 22%; }
 .reference-result-table tbody th > button { min-height: 26px; padding: 2px 4px; border: 0; background: transparent; color: #d5eef9; font-size: 11px; font-weight: 700; text-align: left; text-transform: none; white-space: normal; }
 .reference-result-table tbody th > button:hover { text-decoration: underline; }
 .reference-result-table td span, .reference-result-table small { display: block; }
@@ -2098,8 +2098,10 @@ html body .shell.dnd-shell::after { display: none; }
 .reference-text { white-space: pre-wrap; overflow-wrap: anywhere; font: 15px/1.65 Inter, "Segoe UI", sans-serif; }
 .reference-pagination, .reference-policy-actions { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 12px; }
 .reference-source-list { max-height: 270px; margin-top: 10px; }
-.reference-source-list th[scope="row"] { min-width: 180px; font-weight: 600; }
-.reference-source-list td:first-child { width: 54px; text-align: center; }
+.reference-source-list .source-enabled-column { width: 38px; }
+.reference-source-list .source-code-column { width: 82px; }
+.reference-source-list th[scope="row"] { min-width: 0; font-weight: 600; }
+.reference-source-list td:first-child { text-align: center; }
 .reference-source-list input { width: 16px; min-height: 16px; margin: 0; }
 .reference-source-list input:disabled { opacity: .75; }
 .reference-source-list tr:not(.selected) { color: #8996a3; }
@@ -2247,6 +2249,16 @@ html body .shell.dnd-shell::after { display: none; }
 .builder-step-heading > div { flex: 1 1 360px; }
 .builder-step-heading h3, .builder-step-heading p { margin: 0; }
 .builder-step-heading p { color: #b7c6d5; }
+.builder-spell-step ~ section { display: none; }
+.builder-spell-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 16px 0 10px; }
+.builder-spell-counts > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border: 1px solid #526171; border-radius: 6px; background: #26313c; }
+.builder-spell-counts > div.complete { border-color: #72d8ca; background: #24443f; }
+.builder-spell-counts strong { font-size: 18px; }
+.builder-spell-tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid #526171; }
+.builder-spell-tabs button { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.builder-spell-tabs button[aria-pressed="true"] { border-color: #72d8ca; background: #24534e; color: #fff; }
+.builder-spell-next { padding: 12px 14px; border-left: 3px solid #e8b85c; background: #3d3325; }
+.builder-innate-spells { padding: 14px; border: 1px solid #526171; border-radius: 6px; background: #26313c; }
 .builder-step-heading label { flex: 0 1 300px; min-width: 220px; margin: 0; }
 .builder-point-budget { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 10px 0; padding: 8px 14px; border: 1px solid #72d8ca; border-radius: 6px; background: #193b36; }
 .builder-point-budget strong { color: #d4fffa; font-size: 19px; }

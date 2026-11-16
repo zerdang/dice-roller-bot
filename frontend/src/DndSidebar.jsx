@@ -216,7 +216,6 @@ function SidebarIcon({ name }) {
     log: <><path d="M4 5h16v12H9l-5 4z" /><path d="M8 9h8M8 13h6" /></>,
     scenes: <><path d="M4 6l5-2 6 2 5-2v14l-5 2-6-2-5 2z" /><path d="M9 4v14M15 6v14" /></>,
     selection: <path d="M6 3l12 11-6 .8 3.5 6-3 1.7-3.4-6-4 4z" />,
-    reset: <path d="M4 8h12M4 8l4-4M4 8l4 4M20 16H8M20 16l-4-4M20 16l-4 4" />,
   };
   return <svg className="sidebar-nav-icon" viewBox="0 0 24 24" aria-hidden="true">{shapes[name]}</svg>;
 }
@@ -247,7 +246,6 @@ export default function DndSidebar({ dashboard, cards, roster, rolls, audience, 
       <button type="button" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => setCollapsed(!collapsed)}><SidebarIcon name={collapsed ? "expand" : "collapse"} /></button>
       {tabs.map((name) => <button type="button" className={tab === name ? "active" : ""} aria-label={labels[name]} title={labels[name]} aria-current={tab === name ? "page" : undefined} onClick={() => { choose(name); if (name !== "party") setQuickCardId(null); }} key={name}><SidebarIcon name={name} /></button>)}
       <button type="button" aria-label="Character creation drafts" title="Character creation drafts" onClick={() => setBuilderOpen(true)}><SidebarIcon name="builder" /></button>
-      {!collapsed && <button type="button" className="dock-reset" aria-label="Reset sidebar width" title="Reset sidebar width" onClick={() => setWidth(400)}><SidebarIcon name="reset" /></button>}
     </nav>
     {!collapsed && <div className="sidebar-content">
       {tab === "reference" && <ReferenceBrowser request={request} isWarden={isWarden} cards={cards} onGrant={() => refresh(true)} />}
