@@ -10,7 +10,7 @@ from functions.reference import ReferenceStore, identity, normalize, plain
 
 
 def documents():
-    return [{"class": [
+    return [{"book": [{"id": "PHB", "name": "Player's Handbook (2014)"}, {"id": "XPHB", "name": "Player's Handbook (2024)"}], "class": [
         {"name": "Fighter", "source": "PHB", "entries": ["Original martial training."]},
         {"name": "Fighter", "source": "XPHB", "entries": ["Revised martial training."]},
     ], "background": [
@@ -42,6 +42,7 @@ class ReferenceTests(unittest.TestCase):
         self.assertNotEqual(result["items"][0]["id"], result["items"][1]["id"])
         self.assertEqual(1, self.store.search(self.player, kind="subrace")["total"])
         self.assertEqual(0, self.store.search(self.player, "Spoiler")["total"])
+        self.assertEqual("Player's Handbook (2024)", self.store.metadata(self.player)["source_names"]["XPHB"])
 
     def test_inheritance_and_unsupported_mods_are_explicit(self):
         found = self.store.search(self.player, "Invented Apprentice")["items"][0]
