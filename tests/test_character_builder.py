@@ -26,7 +26,11 @@ def catalog():
                    "time": [{"number": 1, "unit": "reaction"}], "range": {"type": "self"},
                    "components": {"v": True, "s": True}, "duration": [{"type": "timed", "duration": {"amount": 1, "type": "round"}}]},
                   {"name": "Sample Blast", "source": "XPHB", "level": 3}],
-        "language": [{"name": "Elvish", "source": "XPHB", "type": "standard"}, {"name": "Dwarvish", "source": "XPHB", "type": "standard"}],
+        "language": [{"name": "Elvish", "source": "XPHB", "type": "standard"},
+                     {"name": "Dwarvish", "source": "XPHB", "type": "standard"},
+                     {"name": "Abyssal", "source": "PHB", "type": "exotic"},
+                     {"name": "Abyssal", "source": "XPHB", "type": "rare"},
+                     {"name": "Common", "source": "XPHB", "type": "standard"}],
         "feat": [{"name": "Sample Origin Feat", "source": "XPHB", "category": "O"},
                  {"name": "Sample General Feat", "source": "XPHB", "category": "G"}],
         "item": [{"name": "Healing Potion", "source": "XPHB", "type": "P"}],
@@ -59,7 +63,8 @@ class CharacterBuilderTests(unittest.TestCase):
             draft[field] = self.store.search(self.player, kind=kind, edition="2024")["items"][0]["id"]
         draft["boosts"].update(strength=2, constitution=1)
         draft["equipment"] = {"class": "A", "background": "B"}
-        draft["language_ids"] = [item["id"] for item in self.store.search(self.player, kind="language")["items"]]
+        languages = self.store.search(self.player, kind="language")["items"]
+        draft["language_ids"] = [item["id"] for item in languages if item["name"] in {"Elvish", "Dwarvish"}]
         return draft
 
     def evaluate(self, draft):
@@ -173,6 +178,21 @@ class CharacterBuilderTests(unittest.TestCase):
         self.assertEqual([], self.evaluate(draft)["errors"])
         draft["language_ids"] = draft["language_ids"][:1]
         self.assertTrue(any(e["step"] == "features" for e in self.evaluate(draft)["errors"]))
+
+    def test_languages_are_source_independent_and_deduplicated_by_name(self):
+        draft = self.complete()
+        languages = self.store.search(self.player, kind="language")["items"]
+        abyssal = [item["id"] for item in languages if item["name"] == "Abyssal"]
+        elvish = next(item["id"] for item in languages if item["name"] == "Elvish")
+        common = next(item["id"] for item in languages if item["name"] == "Common")
+        draft["language_ids"] = [*abyssal, elvish]
+        preview = self.evaluate(draft)
+        self.assertEqual([], preview["errors"])
+        self.assertEqual(["Abyssal", "Elvish"], [item["name"] for item in preview["languages"]])
+        draft["language_ids"] = [abyssal[0], abyssal[1]]
+        self.assertEqual(1, len([error for error in self.evaluate(draft)["errors"] if error["step"] == "features"]))
+        draft["language_ids"] = [common, elvish]
+        self.assertTrue(any("other than Common" in error["message"] for error in self.evaluate(draft)["errors"]))
 
     def test_dm_grants_reference_item_once_to_a_campaign_character(self):
         with self.store.connect() as db:

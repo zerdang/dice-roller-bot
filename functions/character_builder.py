@@ -239,7 +239,9 @@ class CharacterBuilderStore(ReferenceStore):
         settings = self.campaign_policy(db, auth["campaign_id"])
         errors, review = [], []
         def error(step, message):
-            errors.append({"step": step, "message": message})
+            item = {"step": step, "message": message}
+            if item not in errors:
+                errors.append(item)
         selected = {}
         for key, kinds, label, step in (("class_id", {"class"}, "class", "class"), ("species_id", {"race"}, "species", "origin"), ("background_id", {"background"}, "background", "origin")):
             value = self.selected(db, auth, row["version"], payload[key], kinds)
@@ -374,15 +376,20 @@ class CharacterBuilderStore(ReferenceStore):
                 review.append(f"Resolve feats granted by {value['name']} in the Features step.")
             if value and value["raw"].get("languageProficiencies"):
                 review.append(f"Resolve languages granted by {value['name']} in the Features step.")
-        languages = []
+        language_choices = {}
+        unavailable_language = False
         for language_id in payload.get("language_ids", []):
             language = self.selected(db, auth, row["version"], language_id, {"language"})
-            if not language or language["raw"].get("type") != "standard":
-                error("features", "Choose available standard languages for your origin.")
+            if not language:
+                unavailable_language = True
                 continue
-            languages.append({"id": language["id"], "name": language["name"], "source": language["source"]})
-        if len(languages) != 2 or len({language["name"].casefold() for language in languages}) != 2 or any(language["name"].casefold() == "common" for language in languages):
-            error("features", "Choose two different standard languages in addition to Common.")
+            name_key = " ".join(language["name"].split()).casefold()
+            language_choices.setdefault(name_key, {"id": language["id"], "name": language["name"], "source": language["source"]})
+        languages = list(language_choices.values())
+        if unavailable_language:
+            error("features", "A selected language is unavailable in this campaign.")
+        if len(language_choices) != 2 or "common" in language_choices:
+            error("features", "Choose two different languages other than Common.")
         feats = []
         feat_count = 0
         for label in ("species", "background"):
