@@ -217,8 +217,35 @@ CREATE TABLE IF NOT EXISTS reference_entry (
 );
 CREATE INDEX IF NOT EXISTS reference_filter ON reference_entry(version,kind,source,edition);
 CREATE VIRTUAL TABLE IF NOT EXISTS reference_search USING fts5(version UNINDEXED, id UNINDEXED, name, text, tokenize='unicode61');
+CREATE TABLE IF NOT EXISTS reference_spell_class (
+ version TEXT NOT NULL, spell_source TEXT NOT NULL, spell_name TEXT NOT NULL,
+ class_source TEXT NOT NULL, class_name TEXT NOT NULL,
+ PRIMARY KEY(version,spell_source,spell_name,class_source,class_name)
+);
+CREATE INDEX IF NOT EXISTS reference_spell_class_lookup ON reference_spell_class(version,class_source,class_name);
 CREATE TABLE IF NOT EXISTS reference_policy (campaign_id INTEGER PRIMARY KEY, sources TEXT);
 """
+
+
+def spell_class_links(documents):
+    """Flatten the generated 5etools spell-source lookup without exposing it to clients."""
+    links = set()
+    for document in documents:
+        lookup = document.get("_spellSourceLookup") if isinstance(document, dict) else None
+        if not isinstance(lookup, dict):
+            continue
+        for spell_source, spells in lookup.items():
+            if not isinstance(spells, dict):
+                continue
+            for spell_name, eligibility in spells.items():
+                if not isinstance(eligibility, dict):
+                    continue
+                for group_name in ("class", "classVariant"):
+                    for class_source, classes in (eligibility.get(group_name) or {}).items():
+                        if isinstance(classes, dict):
+                            links.update((str(spell_source), str(spell_name), str(class_source), str(class_name))
+                                         for class_name, enabled in classes.items() if enabled)
+    return sorted(links)
 
 
 def identity(kind, record):
@@ -365,6 +392,7 @@ class ReferenceStore:
         if not re.fullmatch(r"[0-9a-f]{40}", version):
             raise ValueError("An exact upstream commit SHA is required")
         entries, duplicates = normalize(documents)
+        spell_links = spell_class_links(documents)
         if not entries:
             raise ValueError("No reference entries found; active catalog unchanged")
         report = {"version": version, "imported_at": datetime.now(timezone.utc).isoformat(),
@@ -385,6 +413,9 @@ class ReferenceStore:
                     # content, so older pinned imports can be enriched safely.
                     report["source_names"] = names
                     db.execute("UPDATE reference_version SET report=? WHERE id=?", (json.dumps(report), version))
+                if spell_links:
+                    db.executemany("INSERT OR IGNORE INTO reference_spell_class VALUES(?,?,?,?,?)",
+                                   [(version, *link) for link in spell_links])
                 return report
             for entry in entries:
                 db.execute("INSERT INTO reference_entry VALUES(?,?,?,?,?,?,?,?,?,?)", (
@@ -392,6 +423,9 @@ class ReferenceStore:
                     str(entry["page"]) if entry["page"] is not None else None, entry["text"],
                     json.dumps(entry["raw"]), json.dumps(entry["warnings"])))
                 db.execute("INSERT INTO reference_search VALUES(?,?,?,?)", (version, entry["id"], entry["name"], entry["text"]))
+            if spell_links:
+                db.executemany("INSERT INTO reference_spell_class VALUES(?,?,?,?,?)",
+                               [(version, *link) for link in spell_links])
             db.execute("INSERT INTO reference_version VALUES(?,?)", (version, json.dumps(report)))
             db.execute("INSERT OR REPLACE INTO reference_active VALUES(1,?)", (version,))
         return report
@@ -443,7 +477,7 @@ class ReferenceStore:
             db.execute("INSERT OR REPLACE INTO reference_policy VALUES(?,?)", (auth["campaign_id"], json.dumps(sorted(set(sources))) if sources is not None else None))
         return self.metadata(auth)
 
-    def search(self, auth, query="", kind="", source="", edition="", offset=0, limit=30, version=None, level="", school=""):
+    def search(self, auth, query="", kind="", source="", edition="", offset=0, limit=30, version=None, level="", school="", eligible_class=None):
         if len(query) > 200 or offset < 0 or not 1 <= limit <= 100:
             raise DndError("Invalid search bounds")
         if level and (kind != "spell" or level not in {str(value) for value in range(10)}):
@@ -462,6 +496,14 @@ class ReferenceStore:
             if school:
                 clauses.append("json_extract(e.raw, '$.school')=?")
                 args.append(school)
+            if eligible_class:
+                clauses.append("""EXISTS (SELECT 1 FROM reference_spell_class sc
+                    WHERE sc.version=e.version
+                    AND lower(sc.spell_source)=lower(e.source)
+                    AND lower(sc.spell_name)=lower(e.name)
+                    AND lower(sc.class_source)=lower(?)
+                    AND lower(sc.class_name)=lower(?))""")
+                args.extend(eligible_class)
             words = re.findall(r"\w+", query, re.UNICODE)
             if query.strip() and not words:
                 return {"version": version, "total": 0, "items": []}

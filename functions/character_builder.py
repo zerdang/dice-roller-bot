@@ -235,6 +235,49 @@ class CharacterBuilderStore(ReferenceStore):
         return {"id": row["id"], "name": row["name"], "source": row["source"], "edition": row["edition"],
                 "text": row["text"], "warnings": json.loads(row["warnings"]), "raw": resolved}
 
+    @staticmethod
+    def class_spell_limits(cls):
+        limits = {"cantrips": 0, "level_one": 0}
+        if not cls:
+            return limits
+        for field, target in (("cantripProgression", "cantrips"),
+                              ("preparedSpellsProgression", "level_one"),
+                              ("spellsKnownProgression", "level_one"),
+                              ("spellsKnownProgressionFixed", "level_one")):
+            values = cls["raw"].get(field)
+            if isinstance(values, list) and values and type(values[0]) is int:
+                limits[target] = max(limits[target], values[0])
+        return limits
+
+    @staticmethod
+    def innate_spell_refs(origin):
+        refs = []
+        if not origin:
+            return refs
+
+        def collect(value):
+            if isinstance(value, str):
+                name_source = value.split("#", 1)[0]
+                name, _, source = name_source.partition("|")
+                if name and not any(symbol in name for symbol in ("=", ";", "[", "]")):
+                    refs.append((name.strip(), source.strip()))
+            elif isinstance(value, list):
+                for item in value:
+                    collect(item)
+            elif isinstance(value, dict):
+                for key, item in value.items():
+                    if key not in {"choose", "all"}:
+                        collect(item)
+
+        for block in origin["raw"].get("additionalSpells") or []:
+            if not isinstance(block, dict):
+                continue
+            for mode in ("known", "innate", "prepared"):
+                levels = block.get(mode)
+                if isinstance(levels, dict):
+                    collect(levels.get("1", levels.get(1, [])))
+        return refs
+
     def evaluate(self, db, auth, row, payload):
         settings = self.campaign_policy(db, auth["campaign_id"])
         errors, review = [], []
@@ -415,15 +458,14 @@ class CharacterBuilderStore(ReferenceStore):
             feats.append({"id": feat["id"], "name": feat["name"], "source": feat["source"], "origin": "choice"})
         if len(payload.get("feat_ids", [])) != feat_count:
             error("features", f"Choose {feat_count} Origin feats granted by your species or background.")
-        if cls and (cls["raw"].get("cantripProgression") or cls["raw"].get("preparedSpellsProgression") or cls["raw"].get("spellsKnownProgression")):
-            review.append("Verify spell selections and counts against the class source before finalization.")
-        spell_limits = {"cantrips": 0, "level_one": 0}
-        if cls:
-            raw_class = cls["raw"]
-            for field, target in (("cantripProgression", "cantrips"), ("preparedSpellsProgression", "level_one"), ("spellsKnownProgression", "level_one")):
-                values = raw_class.get(field)
-                if isinstance(values, list) and values and type(values[0]) is int:
-                    spell_limits[target] = max(spell_limits[target], values[0])
+        spell_limits = self.class_spell_limits(cls)
+        spell_eligibility_ready = not any(spell_limits.values())
+        if cls and any(spell_limits.values()):
+            spell_eligibility_ready = bool(db.execute(
+                "SELECT 1 FROM reference_spell_class WHERE version=? AND lower(class_source)=lower(?) AND lower(class_name)=lower(?) LIMIT 1",
+                (row["version"], cls["source"], cls["name"])).fetchone())
+            if not spell_eligibility_ready:
+                error("spells", "Spell-list data is unavailable. Ask the DM to re-import the reference catalog.")
         spells = []
         for spell_id in payload.get("spell_ids", []):
             spell = self.selected(db, auth, row["version"], spell_id, {"spell"})
@@ -433,21 +475,42 @@ class CharacterBuilderStore(ReferenceStore):
             level = spell["raw"].get("level")
             if type(level) is not int or level not in (0, 1):
                 error("spells", f"{spell['name']} is not a cantrip or level-one spell.")
+            if cls and spell_eligibility_ready and not db.execute(
+                    """SELECT 1 FROM reference_spell_class WHERE version=?
+                       AND lower(spell_source)=lower(?) AND lower(spell_name)=lower(?)
+                       AND lower(class_source)=lower(?) AND lower(class_name)=lower(?) LIMIT 1""",
+                    (row["version"], spell["source"], spell["name"], cls["source"], cls["name"])).fetchone():
+                error("spells", f"{spell['name']} is not available to {cls['name']}.")
             spells.append({"id": spell["id"], "name": spell["name"], "source": spell["source"], "level": level})
         for level, limit, label in ((0, spell_limits["cantrips"], "cantrips"), (1, spell_limits["level_one"], "level-one spells")):
             count = sum(spell["level"] == level for spell in spells)
             if count > limit:
-                review.append(f"{count} {label} are selected; the class grants {limit}. Verify additional origin grants.")
+                error("spells", f"Remove {count - limit} {label}; this class grants {limit}.")
             elif limit and count < limit:
                 error("spells", f"Choose {limit - count} more {label} for this class.")
-        if spells:
-            review.append("Confirm every selected spell is on the class or origin spell list; catalog spell records do not contain class eligibility.")
+        innate_spells = []
+        innate_seen = set()
+        for origin_name in ("species", "lineage", "background"):
+            origin = selected.get(origin_name)
+            for name, source in self.innate_spell_refs(origin):
+                key = " ".join(name.split()).casefold()
+                if key in innate_seen:
+                    continue
+                innate_seen.add(key)
+                catalog_spell = db.execute(
+                    "SELECT name,source,raw FROM reference_entry WHERE version=? AND kind='spell' AND lower(name)=lower(?) AND (?='' OR lower(source)=lower(?)) ORDER BY source LIMIT 1",
+                    (row["version"], name, source, source)).fetchone()
+                raw = json.loads(catalog_spell["raw"]) if catalog_spell else {}
+                innate_spells.append({"name": catalog_spell["name"] if catalog_spell else name.title(),
+                                      "source": catalog_spell["source"] if catalog_spell else source or origin["source"],
+                                      "level": raw.get("level"), "origin": origin_name})
         return {"errors": errors, "review": list(dict.fromkeys(review)), "eligible_boosts": eligible,
                 "scores": final, "modifiers": modifiers, "points_spent": spent if method == "point_buy" else None,
                 "class_skill_options": class_options, "class_skill_count": class_count,
                 "skill_grants": granted, "roll_pool": pool, "policy": settings,
                 "equipment_options": equipment_options, "level_one_features": level_one_features,
-                "spell_limits": spell_limits, "spells": spells, "languages": languages, "feats": feats, "feat_choice_count": feat_count,
+                "spell_limits": spell_limits, "spell_eligibility_ready": spell_eligibility_ready,
+                "spells": spells, "innate_spells": innate_spells, "languages": languages, "feats": feats, "feat_choice_count": feat_count,
                 "selected": {key: {k: v for k, v in value.items() if k != "raw"} if value else None for key, value in selected.items()},
                 "can_finalize": not errors, "foundation_complete": not errors}
 
@@ -488,8 +551,16 @@ class CharacterBuilderStore(ReferenceStore):
         with self.connect() as db:
             row = self.owned(db, auth, draft_id)
             version = row["version"]
+            eligible_class = None
+            if kind == "spell":
+                payload = json.loads(row["payload"])
+                cls = self.selected(db, auth, version, payload.get("class_id"), {"class"})
+                if not cls or not any(self.class_spell_limits(cls).values()):
+                    return {"version": version, "total": 0, "items": []}
+                eligible_class = (cls["source"], cls["name"])
         return self.search(auth, query=query, kind=kind, source=source, edition=edition,
-                           offset=offset, limit=60, version=version, level=level, school=school)
+                           offset=offset, limit=60, version=version, level=level, school=school,
+                           eligible_class=eligible_class)
 
     def finalize(self, auth, draft_id, body):
         """DM approval applies a validated draft once, preserving the prior sheet."""
@@ -554,6 +625,9 @@ class CharacterBuilderStore(ReferenceStore):
             features = [{"name": feature["name"], "notes": f"{feature['source']} · class"} for feature in preview["level_one_features"]]
             features.extend({"name": feat["name"], "notes": f"{feat['source']} · {feat['origin']}"} for feat in preview["feats"])
             spells = [{"name": spell["name"], "level": spell["level"], "notes": spell["source"]} for spell in preview["spells"]]
+            spells.extend({"name": spell["name"], "level": spell["level"] or 0,
+                           "notes": f"{spell['source']} · innate from {spell['origin']}"}
+                          for spell in preview["innate_spells"])
             caster = cls["raw"].get("casterProgression")
             first_level_slots = {"full": 2, "half": 2, "artificer": 2, "pact": 1}.get(caster, 0)
             spell_ability = SHORT.get(cls["raw"].get("spellcastingAbility"))

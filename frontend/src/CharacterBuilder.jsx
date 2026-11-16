@@ -11,7 +11,7 @@ const SCHOOLS = { A: "Abjuration", C: "Conjuration", D: "Divination", E: "Enchan
 const META_LABELS = { level: "Level", school: "School", casting_time: "Casting time", range: "Range", components: "Components", duration: "Duration", ritual: "Ritual", classes: "Class lists", hd: "Hit Dice", primaryAbility: "Primary ability", proficiency: "Proficiencies", spellcastingAbility: "Spellcasting ability", size: "Size", speed: "Speed", creatureTypes: "Creature type", ability: "Ability increases", skillProficiencies: "Skills", toolProficiencies: "Tools", languageProficiencies: "Languages", feats: "Feats", prerequisite: "Prerequisites", typicalSpeakers: "Typical speakers", script: "Script" };
 const metaValue = (key, value) => key === "level" ? value === 0 ? "Cantrip" : `Level ${value}` : typeof value === "boolean" ? value ? "Yes" : "No" : String(value);
 
-function CatalogChoice({ request, draftId, kind, label, selected, onSelect, onInspect, sources = [], multiple = false }) {
+function CatalogChoice({ request, draftId, kind, label, selected, onSelect, onInspect, sources = [], multiple = false, fixedLevel = "" }) {
   const [query, setQuery] = useState("");
   const [edition, setEdition] = useState("");
   const [source, setSource] = useState("");
@@ -23,17 +23,19 @@ function CatalogChoice({ request, draftId, kind, label, selected, onSelect, onIn
   const [error, setError] = useState("");
   const pageSize = 60;
   useEffect(() => {
+    if (label === "Spell catalog") { setLoading(false); return undefined; }
     let active = true;
     setLoading(true);
     const timer = setTimeout(() => {
-      request(`/api/dnd/creation/drafts/${draftId}/options?${new URLSearchParams({ kind, q: query, source, edition, level: kind === "spell" ? level : "", school: kind === "spell" ? school : "", offset })}`)
+      request(`/api/dnd/creation/drafts/${draftId}/options?${new URLSearchParams({ kind, q: query, source, edition, level: kind === "spell" ? fixedLevel || level : "", school: kind === "spell" ? school : "", offset })}`)
         .then(value => { if (active) { setResult(value); setError(""); } })
         .catch(e => { if (active) setError(e.message); })
         .finally(() => { if (active) setLoading(false); });
     }, 180);
     return () => { active = false; clearTimeout(timer); };
-  }, [request, draftId, kind, query, source, edition, level, school, offset]);
+  }, [request, draftId, kind, label, query, source, edition, level, school, offset, fixedLevel]);
   const reset = () => { setQuery(""); setSource(""); setEdition(""); setLevel(""); setSchool(""); setOffset(0); };
+  if (label === "Spell catalog") return null;
   return <section className="builder-choice"><div className="builder-choice-heading"><h3>{label}</h3><span>{loading ? "Searching…" : `${result.total.toLocaleString()} matches`}</span></div>
     <div className="builder-filter-bar"><label className="builder-query">Search<input type="search" value={query} onChange={e => { setQuery(e.target.value); setOffset(0); }} placeholder={`Search ${label.toLowerCase()}`} /></label><label>Source<select value={source} onChange={e => { setSource(e.target.value); setOffset(0); }}><option value="">All sources</option>{sources.map(value => <option key={value} value={value}>{value}</option>)}</select></label><label>Edition<select value={edition} onChange={e => { setEdition(e.target.value); setOffset(0); }}><option value="">All editions</option><option value="2024">2024</option><option value="2014">2014</option><option value="unspecified">Unspecified</option></select></label>{kind === "spell" && <><label>Level<select value={level} onChange={e => { setLevel(e.target.value); setOffset(0); }}><option value="">All levels</option><option value="0">Cantrips</option>{Array.from({ length: 9 }, (_, index) => <option key={index + 1} value={index + 1}>Level {index + 1}</option>)}</select></label><label>School<select value={school} onChange={e => { setSchool(e.target.value); setOffset(0); }}><option value="">All schools</option>{Object.entries(SCHOOLS).map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label></>}<button type="button" onClick={reset}>Reset</button></div>
     {error && <p role="alert">{error}</p>}
@@ -50,6 +52,7 @@ function DraftEditor({ initial, request, onBack, isWarden, onFinalized }) {
   const [status, setStatus] = useState("Saved");
   const [error, setError] = useState("");
   const [step, setStep] = useState("class");
+  const [spellPanel, setSpellPanel] = useState("choose");
   const [rolling, setRolling] = useState(false);
   const [settings, setSettings] = useState(null);
   const [policyBusy, setPolicyBusy] = useState(false);
@@ -206,6 +209,15 @@ function DraftEditor({ initial, request, onBack, isWarden, onFinalized }) {
   const displayedScores = draft.method === "rolled" ? preview.roll_pool?.totals || [] : ARRAY;
   const pointScoresValid = Object.values(draft.scores).every(score => Number.isInteger(score) && score >= 8 && score <= 15);
   const pointRemaining = pointScoresValid ? 27 - Object.values(draft.scores).reduce((sum, score) => sum + COST[score], 0) : null;
+  const cantripCount = preview.spells?.filter(spell => spell.level === 0).length || 0;
+  const levelOneCount = preview.spells?.filter(spell => spell.level === 1).length || 0;
+  const cantripLimit = preview.spell_limits?.cantrips || 0;
+  const levelOneLimit = preview.spell_limits?.level_one || 0;
+  const toggleSpell = (id, count, limit) => {
+    const chosen = draft.spell_ids || [];
+    if (chosen.includes(id)) apply("spell_ids", chosen.filter(value => value !== id));
+    else if (count < limit) apply("spell_ids", [...chosen, id]);
+  };
   const catalogStep = ["class", "origin", "spells"].includes(step);
   if (finalizedId) return <section className="creation-dialog creation-drafts" role="dialog" aria-modal="true" aria-label="Approved character draft" ref={dialog} tabIndex={-1} onKeyDown={trap}><header className="creation-header"><h2>{draft.name}</h2><button onClick={onBack}>Back to drafts</button></header><main className="creation-main"><p role="status">This draft was approved as character #{finalizedId}. Open the character sheet from the party to use it.</p></main></section>;
   return <section className={`creation-dialog${detailPanel ? " detail-open" : ""}`} role="dialog" aria-modal="true" aria-label="Character draft builder" ref={dialog} tabIndex={-1} onKeyDown={trap}>
@@ -214,6 +226,15 @@ function DraftEditor({ initial, request, onBack, isWarden, onFinalized }) {
     <nav className="creation-steps" aria-label="Character creation steps">{STEPS.map(([id, label]) => <button key={id} aria-current={step === id ? "step" : undefined} onClick={() => setStep(id)}>{label}</button>)}</nav>
     <div className="creation-name"><label>Character name<input maxLength={100} value={draft.name} onChange={e => apply("name", e.target.value)} /></label></div>
     <div className={`creation-body${catalogStep ? " has-catalog" : ""}${detailPanel ? " has-detail" : ""}${detailExpanded ? " expanded" : ""}`}><main className="creation-main" ref={mainScroll}>
+      {step === "spells" && <section className="builder-spell-step"><header className="builder-step-heading"><div><h3>Choose spells</h3><p>Choices are limited to spells available to your selected class. Innate spells are tracked separately and do not use these choices.</p></div></header>
+        <div className="builder-spell-counts"><div className={cantripCount === cantripLimit ? "complete" : ""}><span>Cantrips</span><strong>{cantripCount} / {cantripLimit}</strong></div><div className={levelOneCount === levelOneLimit ? "complete" : ""}><span>Level-one spells</span><strong>{levelOneCount} / {levelOneLimit}</strong></div></div>
+        <nav className="builder-spell-tabs" aria-label="Spell selection views"><button type="button" aria-pressed={spellPanel === "choose"} onClick={() => setSpellPanel("choose")}>Class choices</button><button type="button" aria-pressed={spellPanel === "innate"} onClick={() => setSpellPanel("innate")}>Innate spells ({preview.innate_spells?.length || 0})</button></nav>
+        {spellPanel === "innate" ? <div className="builder-innate-spells"><h4>Already granted</h4>{preview.innate_spells?.length ? <ul>{preview.innate_spells.map((spell, index) => <li key={`${spell.name}-${index}`}><strong>{spell.name}</strong> · {title(spell.origin)}{spell.source ? ` · ${spell.source}` : ""}</li>)}</ul> : <p>Your selected species, lineage, and background do not grant any fixed level-one spells.</p>}</div> : !preview.spell_eligibility_ready ? <p role="alert">Spell-list data is unavailable. Ask the DM to re-import the reference catalog.</p> : !cantripLimit && !levelOneLimit ? <p>This class has no cantrip or level-one spell choices at level one.</p> : <>
+          {cantripLimit > 0 && <CatalogChoice request={request} draftId={initial.id} onInspect={inspect} sources={referenceMeta?.sources || []} kind="spell" label={`Cantrips — ${cantripCount} of ${cantripLimit} selected`} fixedLevel="0" multiple selected={draft.spell_ids || []} onSelect={id => toggleSpell(id, cantripCount, cantripLimit)} />}
+          {levelOneLimit > 0 && cantripCount < cantripLimit ? <p className="builder-spell-next">Choose all {cantripLimit} cantrips first. Then your level-one spell list will open.</p> : levelOneLimit > 0 && <CatalogChoice request={request} draftId={initial.id} onInspect={inspect} sources={referenceMeta?.sources || []} kind="spell" label={`Level-one spells — ${levelOneCount} of ${levelOneLimit} selected`} fixedLevel="1" multiple selected={draft.spell_ids || []} onSelect={id => toggleSpell(id, levelOneCount, levelOneLimit)} />}
+        </>}
+        <label>Additional spell decisions<textarea rows={4} maxLength={6000} value={draft.spell_choices || ""} onChange={e => apply("spell_choices", e.target.value)} placeholder="Record flexible innate spell choices or other source-specific decisions." /></label>
+      </section>}
       {step === "class" && <CatalogChoice request={request} draftId={initial.id} onInspect={inspect} sources={referenceMeta?.sources || []} kind="class" label="Class" selected={draft.class_id} onSelect={id => setDraft(old => ({ ...old, class_id: id, class_skills: [], equipment: { ...old.equipment, class: "" } }))} />}
       {step === "origin" && <>
         <CatalogChoice request={request} draftId={initial.id} onInspect={inspect} sources={referenceMeta?.sources || []} kind="race" label="Species" selected={draft.species_id} onSelect={id => setDraft(old => ({ ...old, species_id: id, lineage_id: "" }))} />

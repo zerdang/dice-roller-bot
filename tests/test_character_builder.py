@@ -18,14 +18,17 @@ def catalog():
          "classFeatures": ["First Feature|Example Warrior|XPHB|1", "Later Feature|Example Warrior|XPHB|2"],
          "startingEquipment": {"defaultData": [{"A": [{"item": "sword|xphb"}, {"value": 500}], "B": [{"value": 1000}]}]}},
         {"name": "Example Warrior", "source": "PHB", "entries": ["Legacy example."]},
-    ], "race": [{"name": "Example Folk", "source": "XPHB", "speed": 30},
+        {"name": "Zed Mage", "source": "XPHB", "cantripProgression": [1], "preparedSpellsProgression": [1]},
+    ], "race": [{"name": "Example Folk", "source": "XPHB", "speed": 30,
+                  "additionalSpells": [{"known": {"1": ["Light|XPHB#c"]}}]},
                 {"name": "Human", "source": "XPHB", "feats": [{"anyFromCategory": {"category": ["O"], "count": 1}}]}],
         "subrace": [{"name": "Example Lineage", "source": "TEST", "raceName": "Example Folk", "raceSource": "XPHB"}],
         "spell": [{"name": "Sample Spark", "source": "XPHB", "level": 0},
                   {"name": "Sample Shield", "source": "XPHB", "level": 1, "school": "A",
                    "time": [{"number": 1, "unit": "reaction"}], "range": {"type": "self"},
                    "components": {"v": True, "s": True}, "duration": [{"type": "timed", "duration": {"amount": 1, "type": "round"}}]},
-                  {"name": "Sample Blast", "source": "XPHB", "level": 3}],
+                  {"name": "Sample Blast", "source": "XPHB", "level": 3},
+                  {"name": "Light", "source": "XPHB", "level": 0}],
         "language": [{"name": "Elvish", "source": "XPHB", "type": "standard"},
                      {"name": "Dwarvish", "source": "XPHB", "type": "standard"},
                      {"name": "Abyssal", "source": "PHB", "type": "exotic"},
@@ -37,7 +40,11 @@ def catalog():
         "background": [{"name": "Example Soldier", "source": "XPHB", "skillProficiencies": [{"athletics": True, "intimidation": True}],
                         "ability": [{"choose": {"weighted": {"from": ["str", "dex", "con"], "weights": [2, 1]}}},
                                     {"choose": {"weighted": {"from": ["str", "dex", "con"], "weights": [1, 1, 1]}}}],
-                        "startingEquipment": [{"A": [{"item": "pack|xphb"}], "B": [{"value": 5000}]}]}]}]
+                        "startingEquipment": [{"A": [{"item": "pack|xphb"}], "B": [{"value": 5000}]}]}],
+        "_spellSourceLookup": {"xphb": {
+            "sample spark": {"class": {"XPHB": {"Zed Mage": True}}},
+            "sample shield": {"class": {"XPHB": {"Zed Mage": True}}}
+        }}}]
 
 
 class CharacterBuilderTests(unittest.TestCase):
@@ -69,6 +76,13 @@ class CharacterBuilderTests(unittest.TestCase):
 
     def evaluate(self, draft):
         return self.store.preview(self.player, self.created["id"], {"draft": draft})
+
+    def caster_draft(self):
+        draft = self.complete()
+        draft["class_id"] = next(item["id"] for item in self.store.search(self.player, kind="class", edition="2024")["items"] if item["name"] == "Zed Mage")
+        draft["class_skills"] = []
+        self.store.save(self.player, self.created["id"], {"revision": 1, "draft": draft})
+        return draft
 
     def test_create_is_retry_safe_and_drafts_are_owned(self):
         again = self.store.create(self.player, {"operation_id": "start"})
@@ -103,18 +117,20 @@ class CharacterBuilderTests(unittest.TestCase):
         self.assertEqual(2, len([e for e in self.evaluate(draft)["errors"] if e["step"] == "equipment"]))
 
     def test_spell_selections_are_pinned_and_reject_higher_levels(self):
-        draft = self.complete()
+        draft = self.caster_draft()
         options = self.store.options(self.player, self.created["id"], "spell")
-        self.assertEqual(3, options["total"])
+        self.assertEqual(2, options["total"])
         by_name = {item["name"]: item["id"] for item in options["items"]}
-        draft["spell_ids"] = [by_name["Sample Blast"]]
+        blast_id = next(item["id"] for item in self.store.search(self.player, kind="spell")["items"] if item["name"] == "Sample Blast")
+        draft["spell_ids"] = [blast_id]
         self.assertTrue(any(e["step"] == "spells" for e in self.evaluate(draft)["errors"]))
-        draft["spell_ids"] = [by_name["Sample Spark"]]
+        draft["spell_ids"] = [by_name["Sample Spark"], by_name["Sample Shield"]]
         self.assertEqual([], self.evaluate(draft)["errors"])
         self.store.set_policy(self.dm, ["TEST"])
         self.assertTrue(any(e["step"] == "spells" for e in self.evaluate(draft)["errors"]))
 
     def test_spell_options_filter_by_level_and_school_with_visible_metadata(self):
+        self.caster_draft()
         result = self.store.options(self.player, self.created["id"], "spell", level="1", school="A")
         self.assertEqual(1, result["total"])
         spell = result["items"][0]
@@ -126,6 +142,16 @@ class CharacterBuilderTests(unittest.TestCase):
         detail = self.store.detail(self.player, spell["id"], self.version)
         self.assertEqual(spell["metadata"], detail["metadata"])
         self.assertEqual(0, self.store.options(self.player, self.created["id"], "spell", level="0", school="A")["total"])
+
+    def test_noncasters_cannot_select_spells_and_innate_spells_are_separate(self):
+        draft = self.complete()
+        self.store.save(self.player, self.created["id"], {"revision": 1, "draft": draft})
+        self.assertEqual(0, self.store.options(self.player, self.created["id"], "spell")["total"])
+        spark = next(item for item in self.store.search(self.player, kind="spell")["items"] if item["name"] == "Sample Spark")
+        draft["spell_ids"] = [spark["id"]]
+        preview = self.evaluate(draft)
+        self.assertTrue(any("class grants 0" in error["message"] for error in preview["errors"]))
+        self.assertEqual(["Light"], [spell["name"] for spell in preview["innate_spells"]])
 
     def test_dm_finalization_is_atomic_retry_safe_and_preserves_prior_sheet(self):
         CompanionStore(self.store.path)
@@ -273,7 +299,7 @@ class CharacterBuilderTests(unittest.TestCase):
         self.store.save(self.player, self.created["id"], {"revision": 1, "draft": draft})
         self.store.import_documents("b" * 40, [{"class": [{"name": "New class", "source": "TEST"}]}])
         choices = self.store.options(self.player, self.created["id"], "class")
-        self.assertEqual(2, choices["total"])
+        self.assertEqual(3, choices["total"])
         self.assertEqual(self.version, choices["version"])
         self.store.set_policy(self.dm, ["TEST"])
         hidden = self.store.get(self.player, self.created["id"])

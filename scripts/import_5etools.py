@@ -54,6 +54,8 @@ def main():
     files = sorted(set(files))
     with ThreadPoolExecutor(max_workers=4) as pool:
         documents = list(pool.map(fetch, files))
+    lookup_path = "generated/gendata-spell-source-lookup.json"
+    documents.append({"_spellSourceLookup": fetch(lookup_path)})
     Path(args.db).resolve().parent.mkdir(parents=True, exist_ok=True)
     report = ReferenceStore(args.db).import_documents(args.commit, documents,
         [{"path": path, "sha256": digest} for path, digest in sorted(manifest.items())])
