@@ -258,6 +258,18 @@ class CharacterBuilderTests(unittest.TestCase):
         draft["boosts"].update(strength=1, dexterity=1, constitution=1)
         self.assertEqual([], self.evaluate(draft)["errors"])
 
+    def test_campaign_can_allow_flexible_background_abilities(self):
+        draft = self.complete()
+        draft["boosts"] = dict.fromkeys(ABILITIES, 0)
+        draft["boosts"].update(wisdom=2, charisma=1)
+        self.assertTrue(any("eligible" in error["message"] for error in self.evaluate(draft)["errors"]))
+        settings = self.store.save_settings(self.dm, {
+            "revision": 0, "methods": ["array", "point_buy", "rolled"],
+            "flexible_background_abilities": True,
+        })
+        self.assertTrue(settings["flexible_background_abilities"])
+        self.assertEqual([], self.evaluate(draft)["errors"])
+
     def test_point_buy_cost_curve_and_manual_method_policy(self):
         draft = self.complete()
         draft["method"] = "point_buy"

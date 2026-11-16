@@ -2106,6 +2106,23 @@ html body .shell.dnd-shell::after { display: none; }
 .reference-source-list input:disabled { opacity: .75; }
 .reference-source-list tr:not(.selected) { color: #8996a3; }
 .reference-source-list code { color: #a8c9c4; font-size: 10px; }
+.settings-pane { display: flex; flex-direction: column; min-height: 0; }
+.campaign-settings-scroll { display: grid; gap: 18px; padding: 14px; }
+.campaign-settings-scroll > section { padding: 14px; border: 1px solid #465464; border-radius: 7px; background: #202b36; }
+.campaign-settings-scroll h3, .campaign-settings-scroll p { margin-top: 0; }
+.campaign-settings-scroll fieldset { margin: 0 0 12px; padding: 10px; border: 1px solid #526171; }
+.campaign-setting-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.campaign-setting-checks label, .campaign-setting-toggle { display: flex; align-items: flex-start; gap: 8px; }
+.campaign-setting-checks input, .campaign-setting-toggle input { width: 18px; min-width: 18px; min-height: 18px; margin: 2px 0 0; }
+.campaign-setting-toggle { margin: 12px 0; padding: 11px; border: 1px solid #526171; border-radius: 6px; background: #26313c; }
+.campaign-setting-toggle span, .campaign-setting-toggle small { display: block; }
+.campaign-setting-toggle small { margin-top: 3px; color: #b7c6d5; line-height: 1.4; }
+.campaign-source-list { max-height: 360px; }
+
+/* Every semantic data table supports direct column resizing. Widths persist in this browser. */
+table.resizable-table > thead > tr:first-child > th::after { content: ""; float: right; width: 9px; height: 1.5em; margin: -.2em -5px -.2em 4px; cursor: col-resize; touch-action: none; }
+table.resizable-table > thead > tr:first-child > th:hover::after { background: linear-gradient(90deg, transparent 3px, #72d8ca 3px, #72d8ca 5px, transparent 5px); }
+body.resizing-table-column, body.resizing-table-column * { cursor: col-resize !important; user-select: none !important; }
 .reference-error { color: #ffb6ac; padding: 10px; }
 .reference-footnote { border-top: 1px solid #465464; padding-top: 12px; color: var(--dnd-muted); font-size: 12px; }
 
