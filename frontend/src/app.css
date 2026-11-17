@@ -1276,7 +1276,7 @@ html[data-theme="fantasy"] .info-token:hover,
 html[data-theme="fantasy"] .info-token:focus { border-color: var(--role-accent, #7b2428); color: var(--role-accent, #7b2428); }
 
 @media (min-width: 951px) {
-  .player-shell {
+  .player-shell:not(.dnd-shell) {
     height: calc(100vh - 12px);
     min-height: 0;
     margin-block: 6px;
@@ -1284,43 +1284,43 @@ html[data-theme="fantasy"] .info-token:focus { border-color: var(--role-accent, 
     overflow: hidden;
   }
 
-  .player-shell .system-bar { margin-inline: -16px; padding: 6px 16px; }
-  .player-shell main { height: calc(100% - 33px); min-height: 0; gap: 14px; padding-top: 10px; }
-  .player-shell .characters, .player-shell .characters > div { min-height: 0; height: 100%; }
-  .player-shell .manifest-heading { display: none; }
-  .player-shell .character-card { height: 100%; margin: 0; padding: 14px 16px; overflow: hidden; }
-  .player-shell .character-top { gap: 12px; padding-bottom: 10px; }
-  .player-shell .resolve-special { flex-basis: 145px; }
-  .player-shell .name-block { gap: 1px; }
-  .player-shell .resource-deck { gap: 8px; margin: 10px 0 0; }
-  .player-shell .resource-bar { padding: 8px 9px 7px; }
-  .player-shell .resource-label { margin-bottom: 5px; }
-  .player-shell .resource-track { margin-top: 6px; }
-  .player-shell .columns { gap: 17px; }
-  .player-shell h3 { margin: 13px 0 8px; padding-bottom: 5px; }
-  .player-shell .fixed-stats .stats-toolbar { min-height: 32px; margin-bottom: 8px; }
-  .player-shell .metric-group { margin-bottom: 11px; }
-  .player-shell .metric-group h4 { margin-bottom: 7px; }
-  .player-shell .metric-circles { gap: 8px; }
-  .player-shell .metric { gap: 4px; }
-  .player-shell .metric-circle { width: clamp(66px, 5.5vw, 84px); }
-  .player-shell textarea { min-height: 58px; max-height: 76px; }
-  .player-shell .crew-log-panel textarea { height: calc(100vh - 310px); min-height: 260px; max-height: 540px; }
-  .player-shell .loadout-slots { gap: 7px; }
-  .player-shell .loadout-slot { padding: 7px; }
-  .player-shell .slot-heading { margin-bottom: 5px; }
-  .player-shell .slot-image { margin-bottom: 6px; }
-  .player-shell .slot-readout { min-height: 0; margin-top: 5px; padding-top: 5px; }
-  .player-shell .slot-readout p { margin-top: 3px; line-height: 1.25; }
-  .player-shell .damage-control { margin-top: 6px; padding-top: 6px; }
-  .player-shell .misc-equipment { margin-top: 8px; padding-top: 7px; }
-  .player-shell .misc-record { min-height: 32px; padding-block: 4px; }
-  .player-shell .misc-hint { margin-top: 4px; }
-  .player-shell aside { position: static; height: 100%; max-height: none; padding: 14px; overflow: hidden; }
-  .player-shell aside .section-heading { min-height: 55px; }
-  .player-shell .roll { padding-block: 10px 11px; }
-  .player-shell .roll::before { top: 10px; }
-  .player-shell .turn-list, .player-shell .roll-list { overflow-y: auto; }
+  .player-shell:not(.dnd-shell) .system-bar { margin-inline: -16px; padding: 6px 16px; }
+  .player-shell:not(.dnd-shell) main { height: calc(100% - 33px); min-height: 0; gap: 14px; padding-top: 10px; }
+  .player-shell:not(.dnd-shell) .characters, .player-shell:not(.dnd-shell) .characters > div { min-height: 0; height: 100%; }
+  .player-shell:not(.dnd-shell) .manifest-heading { display: none; }
+  .player-shell:not(.dnd-shell) .character-card { height: 100%; margin: 0; padding: 14px 16px; overflow: hidden; }
+  .player-shell:not(.dnd-shell) .character-top { gap: 12px; padding-bottom: 10px; }
+  .player-shell:not(.dnd-shell) .resolve-special { flex-basis: 145px; }
+  .player-shell:not(.dnd-shell) .name-block { gap: 1px; }
+  .player-shell:not(.dnd-shell) .resource-deck { gap: 8px; margin: 10px 0 0; }
+  .player-shell:not(.dnd-shell) .resource-bar { padding: 8px 9px 7px; }
+  .player-shell:not(.dnd-shell) .resource-label { margin-bottom: 5px; }
+  .player-shell:not(.dnd-shell) .resource-track { margin-top: 6px; }
+  .player-shell:not(.dnd-shell) .columns { gap: 17px; }
+  .player-shell:not(.dnd-shell) h3 { margin: 13px 0 8px; padding-bottom: 5px; }
+  .player-shell:not(.dnd-shell) .fixed-stats .stats-toolbar { min-height: 32px; margin-bottom: 8px; }
+  .player-shell:not(.dnd-shell) .metric-group { margin-bottom: 11px; }
+  .player-shell:not(.dnd-shell) .metric-group h4 { margin-bottom: 7px; }
+  .player-shell:not(.dnd-shell) .metric-circles { gap: 8px; }
+  .player-shell:not(.dnd-shell) .metric { gap: 4px; }
+  .player-shell:not(.dnd-shell) .metric-circle { width: clamp(66px, 5.5vw, 84px); }
+  .player-shell:not(.dnd-shell) textarea { min-height: 58px; max-height: 76px; }
+  .player-shell:not(.dnd-shell) .crew-log-panel textarea { height: calc(100vh - 310px); min-height: 260px; max-height: 540px; }
+  .player-shell:not(.dnd-shell) .loadout-slots { gap: 7px; }
+  .player-shell:not(.dnd-shell) .loadout-slot { padding: 7px; }
+  .player-shell:not(.dnd-shell) .slot-heading { margin-bottom: 5px; }
+  .player-shell:not(.dnd-shell) .slot-image { margin-bottom: 6px; }
+  .player-shell:not(.dnd-shell) .slot-readout { min-height: 0; margin-top: 5px; padding-top: 5px; }
+  .player-shell:not(.dnd-shell) .slot-readout p { margin-top: 3px; line-height: 1.25; }
+  .player-shell:not(.dnd-shell) .damage-control { margin-top: 6px; padding-top: 6px; }
+  .player-shell:not(.dnd-shell) .misc-equipment { margin-top: 8px; padding-top: 7px; }
+  .player-shell:not(.dnd-shell) .misc-record { min-height: 32px; padding-block: 4px; }
+  .player-shell:not(.dnd-shell) .misc-hint { margin-top: 4px; }
+  .player-shell:not(.dnd-shell) aside { position: static; height: 100%; max-height: none; padding: 14px; overflow: hidden; }
+  .player-shell:not(.dnd-shell) aside .section-heading { min-height: 55px; }
+  .player-shell:not(.dnd-shell) .roll { padding-block: 10px 11px; }
+  .player-shell:not(.dnd-shell) .roll::before { top: 10px; }
+  .player-shell:not(.dnd-shell) .turn-list, .player-shell:not(.dnd-shell) .roll-list { overflow-y: auto; }
 }
 
 @media (max-width: 1250px) {
@@ -2385,6 +2385,21 @@ body.resizing-table-column, body.resizing-table-column * { cursor: col-resize !i
 .sheet-portrait { position: relative; overflow: hidden; }
 .sheet-portrait img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .creation-drafts > main { overflow-y: auto; }
+.draft-summary-list > article { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(260px, 1fr) auto; gap: 18px; }
+.draft-summary-list .draft-summary-description { margin: 5px 0; color: #d9e3ec; font-size: 14px; }
+.draft-summary-scores { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.draft-summary-scores > div { padding: 8px 4px; text-align: center; border: 1px solid #526171; border-radius: 4px; background: #1d252d; }
+.draft-summary-scores dt { color: #b7c6d5; font-size: 11px; }
+.draft-summary-scores dd { margin: 4px 0 0; color: #edf3f8; font-size: 19px; font-weight: 700; }
+.draft-summary-list .draft-summary-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+@media (max-width: 900px) {
+  .draft-summary-list > article { grid-template-columns: minmax(0, 1fr) auto; }
+  .draft-summary-scores { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (max-width: 520px) {
+  .draft-summary-list > article { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .draft-summary-list .draft-summary-actions { justify-content: flex-start; }
+}
 @container creation (max-width: 900px) {
   .creation-summary p { display: inline-grid; width: calc(50% - 12px); margin-right: 12px; vertical-align: top; }
 }
@@ -2441,4 +2456,113 @@ html body .dnd-campaign-home > .shell.dnd-shell {
   .dnd-campaign-home > .campaign-panel { top: 145px; max-height: calc(100dvh - 155px); overflow-y: auto; }
   .workspace-settings { width: 100%; }
   .account-actions .workspace-settings label { width: auto; }
+}
+
+/* Layout contract: chrome takes its natural height; content gets the remaining
+   space. Never calculate a scroll surface from an assumed header height. */
+.dnd-campaign-home {
+  grid-template-rows: auto minmax(240px, 1fr);
+  overflow-y: auto;
+}
+html body .shell.dnd-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.shell.dnd-shell > .flash { flex: 0 0 auto; }
+.shell.dnd-shell > .dnd-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+}
+.shell.dnd-shell .tabletop-shell,
+.shell.dnd-shell .map-column {
+  display: flex;
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+.shell.dnd-shell .map-column .battlemap-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+.battlemap-workspace > .battlemap-header { flex: 0 0 auto; }
+.shell.dnd-shell .map-column :is(.battlemap-layout, .battlemap-empty-with-dock) {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+}
+.shell.dnd-shell .map-stage { min-height: 0; }
+.shell.dnd-shell .map-tools { min-height: 0; overflow-y: auto; }
+.shell.dnd-shell .map-tools .shape-tool-menu {
+  position: static;
+  grid-template-columns: 44px;
+  padding: 4px 0;
+  border: 0;
+  box-shadow: none;
+}
+
+/* Do not inherit the legacy sticky, padded aside frame. All dock panes share
+   the same flex/scroll behavior, including panes added in the future. */
+.shell.dnd-shell .table-sidebar {
+  top: 0;
+  align-self: stretch;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+}
+.table-sidebar > nav > button { flex-shrink: 0; }
+.table-sidebar .sidebar-content { min-height: 0; overflow: auto; }
+.sidebar-content > .sidebar-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+}
+.sidebar-pane > * { flex-shrink: 0; }
+.sidebar-pane > :is(.sidebar-scroll, .log-scroll, .reference-scroll, .character-hud, .selection-scroll, .quick-inspect-scroll) {
+  flex: 1 0 140px;
+  min-height: 0;
+  overflow: auto;
+  scroll-padding-block: 14px;
+}
+.campaign-settings-scroll { align-content: start; }
+.log-scroll > * { flex-shrink: 0; }
+
+/* Dialogs retain an outer scroll fallback when wrapped chrome exceeds a short
+   viewport. Their normal content surfaces still scroll independently. */
+.character-sheet.phase-two,
+.character-sheet.phase-two.maximized {
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+}
+.phase-two .sheet-scroll { flex: 1 0 140px; }
+.creation-dialog { overflow: auto; }
+.creation-dialog > :not(.creation-body):not(.creation-main) { flex-shrink: 0; }
+.creation-body { flex: 1 0 180px; overflow: auto; }
+.creation-body.has-catalog, .creation-body.has-detail { grid-template-rows: auto minmax(140px, 1fr); }
+.creation-body > .creation-main { flex: 1 0 140px; }
+.creation-body > .creation-summary { flex-shrink: 0; }
+.builder-source { overflow: auto; }
+.builder-source > header { flex-shrink: 0; }
+.builder-source-scroll { flex: 1 0 100px; }
+.dnd-campaign-home > .campaign-panel { max-height: calc(100dvh - 80px); overflow: auto; }
+
+/* Legacy sheets use document scrolling rather than a fixed, clipped card. */
+.shell.player-shell:not(.dnd-shell) { height: auto; overflow: visible; }
+.shell.player-shell:not(.dnd-shell) :is(main, .characters, .characters > div, .character-card, aside) {
+  height: auto;
+  overflow: visible;
+}
+@media (max-width: 720px) {
+  .character-sheet.phase-two, .character-sheet.phase-two.maximized { max-height: 100dvh; height: 100dvh; }
 }

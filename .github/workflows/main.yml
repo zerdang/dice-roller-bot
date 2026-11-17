@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, feature/current-development]
+    branches: [main, develop, feature/current-development]
   push:
-    branches: [main, feature/current-development]
+    branches: [main, develop, feature/current-development]
   workflow_dispatch:
 
 permissions:
@@ -41,6 +41,15 @@ jobs:
         working-directory: frontend
       - run: npm test
         working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run test:layout
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: companion-layout-failures
+          path: frontend/test-results/
       - run: npm run build
         working-directory: frontend
       - uses: actions/upload-artifact@v4
