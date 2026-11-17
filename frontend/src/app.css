@@ -2353,6 +2353,23 @@ body.resizing-table-column, body.resizing-table-column * { cursor: col-resize !i
 .builder-review-checks li { margin: 6px 0; }
 .builder-review-issues { list-style: none; padding-left: 0 !important; }
 .builder-review-issues button { width: 100%; text-align: left; }
+.creation-abilities article > .builder-ability-control { flex-direction: column; align-items: stretch; justify-content: center; gap: 5px; }
+.builder-ability-control > span { font-size: 12px; color: #b7c6d5; }
+.builder-ability-stepper { display: grid; grid-template-columns: 40px minmax(36px, 1fr) 40px; align-items: center; gap: 5px; border: 1px solid transparent; border-radius: 5px; }
+.builder-ability-stepper button { min-width: 40px; min-height: 40px; padding: 4px; font-size: 20px; line-height: 1; }
+.builder-ability-stepper output { text-align: center; font-size: 19px; font-variant-numeric: tabular-nums; }
+.builder-boost-budget { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 12px 14px; border: 1px solid #708397; border-radius: 6px; }
+.builder-boost-budget.complete { border-color: #72d8ca; }
+.builder-boost-budget.invalid { color: #ffb4b7; border-color: #ff7e83; }
+html body .creation-dialog .creation-main [aria-invalid="true"] { border: 2px solid #ff7e83; background: #401f28; color: #ffe8e9; }
+html body .creation-dialog .builder-field-error { color: #ffb4b7; font-size: 12px; line-height: 1.4; white-space: normal; }
+html body .creation-dialog .builder-validation { padding: 12px 14px; margin: 12px 0; border: 1px solid #ff7e83; border-radius: 6px; background: #321f27; color: #ffb4b7; }
+html body .creation-dialog .builder-validation li button,
+html body .creation-dialog .builder-review-issues button { color: #ffb4b7; text-align: left; white-space: normal; }
+.builder-spell-list-filter { display: grid; gap: 4px; margin-bottom: 10px; max-width: 420px; }
+.builder-language-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 8px; margin: 12px 0; }
+.builder-language-list button { min-width: 0; min-height: 40px; text-align: left; overflow-wrap: anywhere; }
+.builder-language-selected { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 0; list-style: none; }
 .builder-review-ready { color: #a9ead9; }
 @media (max-width: 900px) {
   .creation-abilities { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; overflow: visible; border: 0; }
