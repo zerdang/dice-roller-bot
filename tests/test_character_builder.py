@@ -238,11 +238,18 @@ class CharacterBuilderTests(unittest.TestCase):
         card = DndStore(self.store.path).cards(self.player)[0]
         self.assertEqual("Test hero", card["name"])
         self.assertEqual(17, card["ability_scores"]["strength"])
+        self.assertEqual({"base": 15, "increases": [{"label": "Background Points (Example Soldier)", "points": 2}]}, card["ability_sources"]["strength"])
         self.assertEqual("Example Warrior", card["identity"]["class_name"])
         self.assertEqual(3, len(card["inventory"]))
         with self.store.connect() as db:
             snapshot = db.execute("SELECT snapshot FROM creation_finalization WHERE draft_id=?", (self.created["id"],)).fetchone()[0]
         self.assertEqual("Old hero", __import__("json").loads(snapshot)["character"]["name"])
+        # Older approved sheets gain source details when the source column migrates.
+        with self.store.connect() as db:
+            db.execute("ALTER TABLE dnd_character DROP COLUMN ability_sources_json")
+        migrated = DndStore(self.store.path).cards(self.player)[0]
+        self.assertEqual(15, migrated["ability_sources"]["strength"]["base"])
+        self.assertEqual(2, migrated["ability_sources"]["strength"]["increases"][0]["points"])
 
     def test_player_submits_own_character_when_dm_review_is_disabled(self):
         with self.store.connect() as db:

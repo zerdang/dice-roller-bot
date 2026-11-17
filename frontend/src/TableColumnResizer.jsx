@@ -22,7 +22,7 @@ export default function TableColumnResizer() {
       try { localStorage.setItem(tableKey(table), JSON.stringify(widths)); } catch { /* Browser storage is optional. */ }
     };
     const enhance = table => {
-      if (table.dataset.columnResizeReady) return;
+      if (table.dataset.columnResize === "false" || table.dataset.columnResizeReady) return;
       table.dataset.columnResizeReady = "true";
       table.classList.add("resizable-table");
       [...table.querySelectorAll(":scope > thead > tr:first-child > th")].forEach(th => {
