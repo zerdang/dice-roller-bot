@@ -1,9 +1,11 @@
 import copy
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from itertools import permutations
 
 from functions.character_builder import CharacterBuilderStore, ABILITIES, ARRAY
 from functions.dnd import DndError
@@ -177,6 +179,31 @@ class CharacterBuilderTests(unittest.TestCase):
         self.assertTrue(any("class grants 0" in error["message"] for error in preview["errors"]))
         self.assertEqual(["Light"], [spell["name"] for spell in preview["innate_spells"]])
 
+    def test_explicit_spell_lists_browse_other_classes_without_granting_eligibility(self):
+        documents = catalog()
+        documents[0]["class"].append({"name": "Other Mage", "source": "PHB", "cantripProgression": [1]})
+        documents[0]["_spellSourceLookup"]["xphb"]["light"] = {"class": {"PHB": {"Other Mage": True}}}
+        # Import before starting a new draft: lists must stay pinned to its catalog.
+        self.store.import_documents("b" * 40, documents)
+        self.created = self.store.create(self.player, {"operation_id": "spell-lists"})
+        draft = self.caster_draft()
+        own = self.store.options(self.player, self.created["id"], "spell")
+        self.assertEqual({"Sample Spark", "Sample Shield"}, {s["name"] for s in own["items"]})
+        other = next(c for c in own["spell_lists"] if c["name"] == "Other Mage")
+        result = self.store.options(self.player, self.created["id"], "spell", spell_list=other["id"], level="0")
+        self.assertEqual(["Light"], [s["name"] for s in result["items"]])
+        self.assertFalse(result["items"][0]["eligible_for_character"])
+        draft["spell_ids"] = [result["items"][0]["id"]]
+        self.assertTrue(any("Light is not available to Zed Mage" == e["message"].rstrip(".") for e in self.evaluate(draft)["errors"]))
+        self.assertEqual(4, self.store.options(self.player, self.created["id"], "spell", spell_list="all")["total"])
+        with self.assertRaises(DndError):
+            self.store.options(self.player, self.created["id"], "spell", spell_list="unknown")
+        self.store.import_documents("c" * 40, [{"class": [{"name": "New class", "source": "XPHB"}]}])
+        self.assertEqual(1, self.store.options(self.player, self.created["id"], "spell", spell_list=other["id"])["total"])
+        self.store.set_policy(self.dm, ["XPHB"])
+        with self.assertRaises(DndError):
+            self.store.options(self.player, self.created["id"], "spell", spell_list=other["id"])
+
     def test_missing_spell_lookup_falls_back_to_review_without_blocking(self):
         draft = self.caster_draft()
         with self.store.connect() as db:
@@ -267,6 +294,44 @@ class CharacterBuilderTests(unittest.TestCase):
         draft["language_ids"] = [common, elvish]
         self.assertTrue(any("other than Common" in error["message"] for error in self.evaluate(draft)["errors"]))
 
+    def test_language_picker_has_unique_names_aliases_and_no_book_requirement(self):
+        choices = self.store.options(self.player, self.created["id"], "language")
+        self.assertEqual(3, choices["total"])
+        self.assertEqual(["Abyssal", "Dwarvish", "Elvish"], [item["name"] for item in choices["items"]])
+        abyssal = next(item for item in choices["items"] if item["name"] == "Abyssal")
+        self.assertEqual(2, len(abyssal["ids"]))
+        self.assertNotIn("source", abyssal)
+        self.store.set_policy(self.dm, [])
+        self.assertEqual(choices, self.store.options(self.player, self.created["id"], "language"))
+        result = self.store.options(self.player, self.created["id"], "language", query=" ABYSS ", source="unowned", edition="2014")
+        self.assertEqual([abyssal], result["items"])
+        # Restore the non-language sources used by the rest of this draft.
+        self.store.set_policy(self.dm, ["XPHB"])
+        draft = self.complete()
+        elvish_id = next(item["id"] for item in self.store.search(self.dm, kind="language")["items"] if item["name"] == "Elvish")
+        draft["language_ids"] = [*abyssal["ids"], elvish_id]
+        preview = self.evaluate(draft)
+        self.assertEqual([], preview["errors"])
+        self.assertEqual(2, len(preview["languages"]))
+
+    def test_language_deduplication_precedes_pagination_and_stays_pinned(self):
+        documents = catalog()
+        documents[0]["language"] = [{"name": f"Language {i:03}", "source": source} for i in range(65) for source in ("PHB", "XPHB")]
+        documents[0]["language"].append({"name": "language   000", "source": "OTHER"})
+        self.store.import_documents("b" * 40, documents)
+        self.created = self.store.create(self.player, {"operation_id": "languages"})
+        first = self.store.options(self.player, self.created["id"], "language")
+        second = self.store.options(self.player, self.created["id"], "language", offset=60)
+        self.assertEqual(65, first["total"])
+        self.assertEqual(60, len(first["items"]))
+        self.assertEqual(5, len(second["items"]))
+        self.assertEqual(3, len(first["items"][0]["ids"]))
+        self.assertFalse({item["name"] for item in first["items"]} & {item["name"] for item in second["items"]})
+        self.store.import_documents("c" * 40, [{"language": [{"name": "New language", "source": "XPHB"}]}])
+        self.assertEqual(first, self.store.options(self.player, self.created["id"], "language"))
+        with self.assertRaises(DndError):
+            self.store.options(self.player, self.created["id"], "language", offset=-1)
+
     def test_dm_grants_reference_item_once_to_a_campaign_character(self):
         with self.store.connect() as db:
             db.execute("INSERT INTO campaign(id,guild_id,name,game_system,warden_token_hash,created_at) VALUES(1,'g','Table','dnd','token','now')")
@@ -294,6 +359,7 @@ class CharacterBuilderTests(unittest.TestCase):
         self.assertEqual("Test hero", self.store.get(self.player, self.created["id"])["draft"]["name"])
 
     def test_array_counts_and_background_boosts(self):
+        self.store.save_settings(self.dm, {"revision": 0, "methods": ["array"], "flexible_background_abilities": False})
         draft = self.complete()
         draft["scores"]["charisma"] = 15
         self.assertTrue(any("standard-array" in e["message"] for e in self.evaluate(draft)["errors"]))
@@ -309,13 +375,84 @@ class CharacterBuilderTests(unittest.TestCase):
         draft = self.complete()
         draft["boosts"] = dict.fromkeys(ABILITIES, 0)
         draft["boosts"].update(wisdom=2, charisma=1)
-        self.assertTrue(any("eligible" in error["message"] for error in self.evaluate(draft)["errors"]))
+        self.assertTrue(self.store.settings(self.dm)["flexible_background_abilities"])
+        self.assertEqual([], self.evaluate(draft)["errors"])
         settings = self.store.save_settings(self.dm, {
             "revision": 0, "methods": ["array", "point_buy", "rolled"],
-            "flexible_background_abilities": True,
+            "flexible_background_abilities": False,
         })
+        self.assertFalse(settings["flexible_background_abilities"])
+        self.assertTrue(any("eligible" in error["message"] for error in self.evaluate(draft)["errors"]))
+        settings = self.store.save_settings(self.dm, {"revision": 1, "methods": ["array"]})
+        self.assertFalse(settings["flexible_background_abilities"])
+        settings = self.store.save_settings(self.dm, {"revision": 2, "methods": ["array"], "flexible_background_abilities": True})
         self.assertTrue(settings["flexible_background_abilities"])
         self.assertEqual([], self.evaluate(draft)["errors"])
+
+    def test_all_revised_background_allocations_and_actionable_field_errors(self):
+        self.store.save_settings(self.dm, {"revision": 0, "methods": ["array"], "flexible_background_abilities": False})
+        draft = self.complete()
+        for first, second in permutations(["strength", "dexterity", "constitution"], 2):
+            with self.subTest(first=first, second=second):
+                draft["boosts"] = {**dict.fromkeys(ABILITIES, 0), first: 2, second: 1}
+                self.assertEqual([], self.evaluate(draft)["errors"])
+        draft["boosts"] = {**dict.fromkeys(ABILITIES, 0), "strength": 1, "dexterity": 1, "constitution": 1}
+        self.assertEqual([], self.evaluate(draft)["errors"])
+        draft["boosts"] = {**dict.fromkeys(ABILITIES, 0), "strength": 2, "wisdom": 1}
+        errors = self.evaluate(draft)["errors"]
+        self.assertEqual(["boosts.wisdom"], errors[0]["fields"])
+        self.assertIn("+0", errors[0]["message"])
+        draft["boosts"]["wisdom"] = 0
+        errors = self.evaluate(draft)["errors"]
+        self.assertIn("assigned +2", errors[0]["message"])
+        self.assertEqual({"boosts.strength", "boosts.dexterity", "boosts.constitution"}, set(errors[0]["fields"]))
+
+    def test_background_simple_choices_fixed_allocations_and_separate_alternatives(self):
+        self.store.save_settings(self.dm, {"revision": 0, "methods": ["array"], "flexible_background_abilities": False})
+        draft = self.complete()
+        def background_ability(patterns):
+            with self.store.connect() as db:
+                raw = json.loads(db.execute("SELECT raw FROM reference_entry WHERE id=? AND version=?", (draft["background_id"], self.version)).fetchone()[0])
+                raw["ability"] = patterns
+                db.execute("UPDATE reference_entry SET raw=? WHERE id=? AND version=?", (json.dumps(raw), draft["background_id"], self.version))
+        # A fixed +2 combined with a simple choice was previously rejected.
+        background_ability([{"str": 2, "choose": {"from": ["dex", "con"], "amount": 1}}])
+        self.assertEqual([], self.evaluate(draft)["errors"])
+        background_ability([{"str": 2, "con": 1}])
+        self.assertEqual([], self.evaluate(draft)["errors"])
+        # Do not accept a mixture of two individually valid alternatives.
+        background_ability([{"str": 2, "dex": 1}, {"con": 2, "wis": 1}])
+        self.assertTrue(any(e["step"] == "abilities" for e in self.evaluate(draft)["errors"]))
+        draft["boosts"] = {**dict.fromkeys(ABILITIES, 0), "constitution": 2, "wisdom": 1}
+        self.assertEqual([], self.evaluate(draft)["errors"])
+
+    def test_background_score_cap_identifies_both_fields(self):
+        draft = self.complete()
+        self.store.save_settings(self.dm, {"revision": 0, "methods": ["manual"]})
+        draft["method"] = "manual"
+        draft["scores"]["strength"] = 20
+        error = next(e for e in self.evaluate(draft)["errors"] if "above 20" in e["message"])
+        self.assertEqual(["scores.strength", "boosts.strength"], error["fields"])
+
+    def test_unrestricted_allocations_still_require_three_points_and_maximum_two_per_ability(self):
+        draft = self.complete()
+        for boosts in ({"wisdom": 2}, {"wisdom": 2, "charisma": 2}, {}):
+            with self.subTest(boosts=boosts):
+                draft["boosts"] = {**dict.fromkeys(ABILITIES, 0), **boosts}
+                preview = self.evaluate(draft)
+                self.assertFalse(preview["can_finalize"])
+                self.assertTrue(any(e["step"] == "abilities" for e in preview["errors"]))
+        draft["boosts"] = {**dict.fromkeys(ABILITIES, 0), "wisdom": 3}
+        with self.assertRaises(DndError):
+            self.evaluate(draft)
+        draft["boosts"] = {**dict.fromkeys(ABILITIES, 0), "wisdom": 1, "charisma": 1, "intelligence": 1}
+        self.assertEqual([], self.evaluate(draft)["errors"])
+
+    def test_older_policy_without_ability_rule_uses_unrestricted_default(self):
+        with self.store.connect() as db:
+            db.execute("INSERT INTO creation_policy VALUES(?,?,?)", (1, 1, json.dumps({"methods": ["array"]})))
+        self.assertTrue(self.store.settings(self.player)["flexible_background_abilities"])
+        self.assertTrue(self.store.save_settings(self.dm, {"revision": 1, "methods": ["array"]})["flexible_background_abilities"])
 
     def test_point_buy_cost_curve_and_manual_method_policy(self):
         draft = self.complete()

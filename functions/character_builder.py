@@ -7,6 +7,7 @@ import json
 import secrets
 import io
 from collections import Counter
+from itertools import permutations, combinations
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from functions.dnd import ABILITIES, SKILL_ABILITIES, DndError, DndStore, _now
@@ -17,7 +18,7 @@ SKILLS = {name.lower(): name for name in SKILL_ABILITIES}
 ARRAY = [15, 14, 13, 12, 10, 8]
 COST = {8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9}
 DEFAULT_POLICY = {"methods": ["array", "point_buy", "rolled"], "manual_review_required": True,
-                  "flexible_background_abilities": False}
+                  "flexible_background_abilities": True}
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS creation_draft (
  id TEXT PRIMARY KEY, campaign_id INTEGER NOT NULL, owner TEXT NOT NULL,
@@ -83,8 +84,7 @@ class CharacterBuilderStore(ReferenceStore):
         methods = body.get("methods")
         if not isinstance(methods, list) or not methods or any(not isinstance(m, str) or m not in {"array", "point_buy", "rolled", "manual"} for m in methods):
             raise DndError("Choose at least one supported ability method")
-        flexible_background_abilities = body.get("flexible_background_abilities", False)
-        if type(flexible_background_abilities) is not bool:
+        if "flexible_background_abilities" in body and type(body["flexible_background_abilities"]) is not bool:
             raise DndError("Flexible background abilities must be true or false")
         manual_review_required = body.get("manual_review_required", True)
         if type(manual_review_required) is not bool:
@@ -92,6 +92,7 @@ class CharacterBuilderStore(ReferenceStore):
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             current = self.campaign_policy(db, auth["campaign_id"])
+            flexible_background_abilities = body.get("flexible_background_abilities", current["flexible_background_abilities"])
             if body.get("revision") != current["revision"]:
                 raise DndError("Creation settings changed; reload before saving", 409)
             value = {"methods": sorted(set(methods)), "manual_review_required": manual_review_required,
@@ -311,11 +312,49 @@ class CharacterBuilderStore(ReferenceStore):
                     collect(levels.get("1", levels.get(1, [])))
         return refs
 
+    @staticmethod
+    def background_boost_options(background, flexible=False):
+        """Keep alternative background allocations separate rather than unioning them."""
+        standard = [{"choose": {"weighted": {"from": list(SHORT), "weights": weights}}} for weights in ([2, 1], [1, 1, 1])]
+        patterns = standard if flexible or not background else background["raw"].get("ability") or standard
+        options, unsupported = [], not isinstance(patterns, list)
+        for pattern in patterns if isinstance(patterns, list) else []:
+            if not isinstance(pattern, dict):
+                unsupported = True
+                continue
+            fixed = {SHORT.get(key, key): value for key, value in pattern.items() if SHORT.get(key, key) in ABILITIES and type(value) is int}
+            choice = pattern.get("choose", {})
+            if not isinstance(choice, dict) or not isinstance(choice.get("weighted", {}), dict):
+                unsupported = True
+                continue
+            weighted = choice.get("weighted", {})
+            eligible = list(dict.fromkeys(SHORT.get(key, key) for key in weighted.get("from", choice.get("from", [])) if SHORT.get(key, key) in ABILITIES))
+            weights = weighted.get("weights") or ([choice.get("amount", 1)] * choice.get("count", 1) if eligible else [])
+            if weights and all(type(value) is int and 1 <= value <= 2 for value in weights) and len(weights) <= len(eligible):
+                for picked in permutations(eligible, len(weights)):
+                    option = dict(fixed)
+                    for ability, amount in zip(picked, weights):
+                        option[ability] = option.get(ability, 0) + amount
+                    if sum(option.values()) == 3 and all(0 <= amount <= 2 for amount in option.values()):
+                        options.append(option)
+            elif not choice and fixed and sum(fixed.values()) == 3 and all(0 <= amount <= 2 for amount in fixed.values()):
+                options.append(fixed)
+            else:
+                unsupported = True
+        if not options:
+            unsupported = True
+            options = [{a: 2, b: 1} for a, b in permutations(ABILITIES, 2)]
+            options += [dict.fromkeys(picked, 1) for picked in combinations(ABILITIES, 3)]
+        unique = {tuple(sorted(option.items())): option for option in options}
+        return list(unique.values()), unsupported
+
     def evaluate(self, db, auth, row, payload):
         settings = self.campaign_policy(db, auth["campaign_id"])
         errors, review = [], []
-        def error(step, message):
+        def error(step, message, fields=None):
             item = {"step": step, "message": message}
+            if fields:
+                item["fields"] = fields
             if item not in errors:
                 errors.append(item)
         selected = {}
@@ -348,7 +387,7 @@ class CharacterBuilderStore(ReferenceStore):
         if method not in settings["methods"]:
             error("abilities", "This ability method is no longer allowed by the DM.")
         if method == "array" and Counter(scores.values()) != Counter(ARRAY):
-            error("abilities", "Assign every standard-array score exactly once: 15, 14, 13, 12, 10, 8.")
+            error("abilities", "Assign every standard-array score exactly once: 15, 14, 13, 12, 10, 8.", [f"scores.{a}" for a in ABILITIES if scores[a] not in ARRAY or list(scores.values()).count(scores[a]) > 1])
         spent = sum(COST.get(n, 0) for n in scores.values())
         if method == "point_buy":
             if any(n not in COST for n in scores.values()):
@@ -362,18 +401,20 @@ class CharacterBuilderStore(ReferenceStore):
         if method == "manual":
             review.append("Manually entered ability scores require DM review.")
         background = selected["background"]
-        eligible = list(ABILITIES)
-        if background and background["raw"].get("ability") and not settings["flexible_background_abilities"]:
-            patterns = background["raw"]["ability"]
-            eligible = sorted({SHORT[a] for p in patterns for a in p.get("choose", {}).get("weighted", {}).get("from", []) if a in SHORT})
-            if not eligible:
-                eligible = list(ABILITIES)
-                review.append("Background ability adjustments use an unsupported format; verify the chosen increases.")
-        if sorted(n for n in boosts.values() if n) not in ([1, 2], [1, 1, 1]) or any(boosts[a] and a not in eligible for a in ABILITIES):
-            error("abilities", "Assign +2/+1 to two eligible abilities, or +1 to three eligible abilities.")
+        boost_options, unsupported = self.background_boost_options(background, settings["flexible_background_abilities"])
+        eligible = [a for a in ABILITIES if any(option.get(a, 0) for option in boost_options)]
+        if unsupported:
+            review.append("Background ability adjustments use an unsupported format; verify the chosen increases.")
+        wrong_abilities = [a for a in ABILITIES if boosts[a] and a not in eligible]
+        if wrong_abilities:
+            for ability in wrong_abilities:
+                error("abilities", f"{ability.title()} is not eligible for this background. Set its background increase to +0; use {', '.join(a.title() for a in eligible)} instead.", [f"boosts.{ability}"])
+        elif not any(all(boosts[a] == option.get(a, 0) for a in ABILITIES) for option in boost_options):
+            error("abilities", f"You assigned +{sum(boosts.values())} in background increases. Assign +2/+1 to two different eligible abilities, or +1 to three, using one allowed background combination.", [f"boosts.{a}" for a in eligible])
         final = {a: scores[a] + boosts[a] for a in ABILITIES}
-        if any(n > 20 for n in final.values()):
-            error("abilities", "Background increases cannot raise an ability above 20.")
+        for ability in ABILITIES:
+            if final[ability] > 20:
+                error("abilities", f"{ability.title()} totals {final[ability]}. Background increases cannot raise an ability above 20; lower its base score or increase.", [f"scores.{ability}", f"boosts.{ability}"])
         modifiers = {a: (n - 10) // 2 for a, n in final.items()}
         granted = {}
         for label in ("background", "species"):
@@ -453,14 +494,15 @@ class CharacterBuilderStore(ReferenceStore):
             if value and value["raw"].get("languageProficiencies"):
                 review.append(f"Resolve languages granted by {value['name']} in the Features step.")
         language_choices = {}
+        language_entries = {entry_id: item for item in self.unique_languages(db, row["version"]) for entry_id in item["ids"]}
         unavailable_language = False
         for language_id in payload.get("language_ids", []):
-            language = self.selected(db, auth, row["version"], language_id, {"language"})
+            language = language_entries.get(language_id)
             if not language:
                 unavailable_language = True
                 continue
             name_key = " ".join(language["name"].split()).casefold()
-            language_choices.setdefault(name_key, {"id": language["id"], "name": language["name"], "source": language["source"]})
+            language_choices.setdefault(name_key, {"id": language_id, "name": language["name"], "ids": language["ids"]})
         languages = list(language_choices.values())
         if unavailable_language:
             error("features", "A selected language is unavailable in this campaign.")
@@ -537,7 +579,7 @@ class CharacterBuilderStore(ReferenceStore):
                 innate_spells.append({"name": catalog_spell["name"] if catalog_spell else name.title(),
                                       "source": catalog_spell["source"] if catalog_spell else source or origin["source"],
                                       "level": raw.get("level"), "origin": origin_name})
-        return {"errors": errors, "review": list(dict.fromkeys(review)), "eligible_boosts": eligible,
+        return {"errors": errors, "review": list(dict.fromkeys(review)), "eligible_boosts": eligible, "boost_options": boost_options,
                 "scores": final, "modifiers": modifiers, "points_spent": spent if method == "point_buy" else None,
                 "class_skill_options": class_options, "class_skill_count": class_count,
                 "skill_grants": granted, "roll_pool": pool, "policy": settings,
@@ -584,25 +626,58 @@ class CharacterBuilderStore(ReferenceStore):
             row = self.owned(db, auth, draft_id)
             return self.evaluate(db, auth, row, payload)
 
-    def options(self, auth, draft_id, kind, query="", source="", edition="", offset=0, level="", school=""):
+    @staticmethod
+    def unique_languages(db, version):
+        # Languages are choices by name, independent of book ownership or edition.
+        languages = {}
+        for entry in db.execute("SELECT id,name FROM reference_entry WHERE version=? AND kind='language' ORDER BY name COLLATE NOCASE,id", (version,)):
+            name = " ".join(entry["name"].split())
+            item = languages.setdefault(name.casefold(), {"id": entry["id"], "name": name, "ids": []})
+            item["ids"].append(entry["id"])
+        return sorted(languages.values(), key=lambda item: item["name"].casefold())
+
+    def options(self, auth, draft_id, kind, query="", source="", edition="", offset=0, level="", school="", spell_list=""):
         if kind not in {"class", "race", "subrace", "background", "spell", "language", "feat"}:
             raise DndError("Unsupported creation category")
         with self.connect() as db:
             row = self.owned(db, auth, draft_id)
             version = row["version"]
+            if kind == "language":
+                if len(query) > 200 or offset < 0:
+                    raise DndError("Invalid search bounds")
+                words = query.casefold().split()
+                items = [item for item in self.unique_languages(db, version)
+                         if item["name"].casefold() != "common" and all(word in item["name"].casefold() for word in words)]
+                return {"version": version, "total": len(items), "items": items[offset:offset + 60]}
             eligible_class = None
+            spell_lists, own_spells, own_ready = [], set(), False
             if kind == "spell":
+                clauses, args, _ = self.filters(db, auth, version)
+                spell_lists = [dict(item) for item in db.execute(
+                    "SELECT e.id,e.name,e.source,e.edition FROM reference_entry e WHERE " + " AND ".join(clauses) +
+                    " AND e.kind='class' AND EXISTS (SELECT 1 FROM reference_spell_class sc WHERE sc.version=e.version AND lower(sc.class_source)=lower(e.source) AND lower(sc.class_name)=lower(e.name)) ORDER BY e.name,e.source", args)]
                 payload = json.loads(row["payload"])
                 cls = self.selected(db, auth, version, payload.get("class_id"), {"class"})
                 if not cls or not any(self.class_spell_limits(cls).values()):
-                    return {"version": version, "total": 0, "items": []}
-                if db.execute(
-                        "SELECT 1 FROM reference_spell_class WHERE version=? AND lower(class_source)=lower(?) AND lower(class_name)=lower(?) LIMIT 1",
-                        (version, cls["source"], cls["name"])).fetchone():
+                    return {"version": version, "total": 0, "items": [], "spell_lists": spell_lists}
+                own_spells = {(entry["spell_source"].casefold(), entry["spell_name"].casefold()) for entry in db.execute(
+                    "SELECT spell_source,spell_name FROM reference_spell_class WHERE version=? AND lower(class_source)=lower(?) AND lower(class_name)=lower(?)", (version, cls["source"], cls["name"]))}
+                own_ready = bool(own_spells)
+                if spell_list and spell_list != "all":
+                    requested = next((item for item in spell_lists if item["id"] == spell_list), None)
+                    if not requested:
+                        raise DndError("This spell list is unavailable in the draft's catalog or campaign", 404)
+                    eligible_class = (requested["source"], requested["name"])
+                elif not spell_list and own_ready:
                     eligible_class = (cls["source"], cls["name"])
-        return self.search(auth, query=query, kind=kind, source=source, edition=edition,
+        result = self.search(auth, query=query, kind=kind, source=source, edition=edition,
                            offset=offset, limit=60, version=version, level=level, school=school,
                            eligible_class=eligible_class)
+        if kind == "spell":
+            result["spell_lists"] = spell_lists
+            for item in result["items"]:
+                item["eligible_for_character"] = (item["source"].casefold(), item["name"].casefold()) in own_spells if own_ready else None
+        return result
 
     def finalize(self, auth, draft_id, body):
         """Apply a validated draft after DM review, or let its owner submit when review is disabled."""
