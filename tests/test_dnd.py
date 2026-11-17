@@ -1,4 +1,5 @@
 import tempfile
+import json
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -50,6 +51,35 @@ class DndReleaseOneTests(unittest.TestCase):
         })
         self.assertEqual(3, first["death_failures"])
         self.assertEqual(first, duplicate)
+
+    def test_turn_tracker_persists_per_character_with_revision_protection(self):
+        usage = {"action": True, "bonus": False, "reaction": True, "interaction": False}
+        saved = self.store.update_card(self.player, self.first["id"], {"revision": 1, "action_reminders": {"turn_2024": json.dumps(usage)}})
+        reopened = DndStore(self.path).cards(self.player)[0]
+        self.assertEqual(usage, json.loads(reopened["action_reminders"]["turn_2024"]))
+        self.assertEqual({}, self.store.cards(self.other)[0]["action_reminders"])
+        with self.assertRaises(DndError) as stale:
+            self.store.update_card(self.player, self.first["id"], {"revision": 1, "action_reminders": {}})
+        self.assertEqual(409, stale.exception.status)
+        reset = self.store.update_card(self.player, self.first["id"], {"revision": saved["revision"], "action_reminders": {"turn_2024": "{}"}})
+        self.assertEqual({}, json.loads(reset["action_reminders"]["turn_2024"]))
+
+    @patch("functions.dnd.secrets.randbelow", return_value=9)
+    def test_modifier_sources_persist_without_reapplying_score_increases(self, _random):
+        saved = self.store.update_card(self.player, self.first["id"], {
+            "revision": 1, "ability_scores": {"charisma": 14}, "proficiency_bonus": 3,
+            "ability_sources": {"charisma": {"base": 12, "increases": [{"label": "Species Points", "points": 1}, {"label": "XYZ Equipment", "points": 1}]}},
+            "skill_training": {"Persuasion": {"tier": 1, "adjustment": 1, "adjustment_source": "XYZ Equipment"}},
+        })
+        fresh = DndStore(self.path).cards(self.player)[0]
+        self.assertEqual(saved["ability_sources"], fresh["ability_sources"])
+        self.assertEqual(14, fresh["ability_scores"]["charisma"])
+        rolled = self.store.roll_sheet_field(self.player, self.first["id"], {"field_type": "skill", "name": "Persuasion", "operation_id": "named-modifier"})
+        self.assertEqual(6, rolled["modifier"])
+        self.assertEqual("XYZ Equipment", fresh["skill_training"]["Persuasion"]["adjustment_source"])
+        with self.assertRaises(DndError):
+            self.store.update_card(self.player, self.first["id"], {"revision": fresh["revision"], "ability_sources": {"charisma": {"base": 12, "increases": [{"label": "Bad", "points": 1.5}]}}})
+        self.assertEqual(saved["ability_sources"], self.store.cards(self.player)[0]["ability_sources"])
 
     def test_damage_uses_temporary_hp_before_hit_points(self):
         card = self.store.cards(self.player)[0]

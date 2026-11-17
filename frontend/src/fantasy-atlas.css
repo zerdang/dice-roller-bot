@@ -190,6 +190,8 @@ html[data-theme="fantasy"] .dnd-campaign-home .creation-dialog { background: var
 html[data-theme="fantasy"] .dnd-campaign-home .creation-dialog :is(h2, h3, h4) { color: #efd5a0; border-color: #786747; }
 html[data-theme="fantasy"] .dnd-campaign-home :is(.creation-header, .creation-name, .creation-summary, .builder-review-card, .builder-options article) { background: var(--atlas-grain), #29393e; border-color: #7e6b46; }
 html[data-theme="fantasy"] .dnd-campaign-home .creation-dialog :is(label, .builder-review-card) { color: #e8d6b0; }
+html[data-theme="fantasy"] .dnd-campaign-home .creation-dialog .builder-source { background: var(--atlas-grain), #233138; border: 0; border-left: 1px solid #7e6b46; box-shadow: none; }
+html[data-theme="fantasy"] .dnd-campaign-home .builder-pane-divider { background: #26353a; border-color: #7e6b46; color: #d6bb83; }
 
 /* The folio keeps a paper reading surface inside the same slate-and-gold frame. */
 html[data-theme="fantasy"] .dnd-campaign-home .character-sheet.grimoire-sheet { border-color: #c0a268; box-shadow: 0 18px 70px #000b, inset 0 0 0 2px #5f513a; }

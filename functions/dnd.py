@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS dnd_character (
     proficiency_bonus INTEGER NOT NULL DEFAULT 2,
     abilities_json TEXT NOT NULL DEFAULT '{}',
     ability_scores_json TEXT NOT NULL DEFAULT '{}',
+    ability_sources_json TEXT NOT NULL DEFAULT '{}',
     skills_json TEXT NOT NULL DEFAULT '{}',
     skill_training_json TEXT NOT NULL DEFAULT '{}',
     saves_json TEXT NOT NULL DEFAULT '{}',
@@ -110,7 +111,7 @@ class DndError(ValueError):
 
 class DndStore:
     JSON_FIELDS = {
-        "abilities": "abilities_json", "ability_scores": "ability_scores_json",
+        "abilities": "abilities_json", "ability_scores": "ability_scores_json", "ability_sources": "ability_sources_json",
         "skills": "skills_json", "skill_training": "skill_training_json",
         "saves": "saves_json", "save_training": "save_training_json",
         "attacks": "attacks_json", "spells": "spells_json", "inventory": "inventory_json",
@@ -134,6 +135,7 @@ class DndStore:
             additions = {
                 "proficiency_bonus": "INTEGER NOT NULL DEFAULT 2",
                 "ability_scores_json": "TEXT NOT NULL DEFAULT '{}'", "skill_training_json": "TEXT NOT NULL DEFAULT '{}'",
+                "ability_sources_json": "TEXT NOT NULL DEFAULT '{}'",
                 "save_training_json": "TEXT NOT NULL DEFAULT '{}'", "spells_json": "TEXT NOT NULL DEFAULT '[]'",
                 "inventory_json": "TEXT NOT NULL DEFAULT '[]'", "identity_json": "TEXT NOT NULL DEFAULT '{}'",
                 "senses_json": "TEXT NOT NULL DEFAULT '{}'", "training_json": "TEXT NOT NULL DEFAULT '{}'",
@@ -143,6 +145,15 @@ class DndStore:
             for name, definition in additions.items():
                 if name not in columns:
                     db.execute(f"ALTER TABLE dnd_character ADD COLUMN {name} {definition}")
+            if "ability_sources_json" not in columns:
+                tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                if {"creation_finalization", "creation_draft"} <= tables:
+                    # Approved drafts retain their original base scores and increases.
+                    for draft in db.execute("SELECT f.character_id,d.payload FROM creation_finalization f JOIN creation_draft d ON d.id=f.draft_id"):
+                        payload = json.loads(draft["payload"])
+                        sources = {ability: {"base": value, "increases": [{"label": "Background Points", "points": payload.get("boosts", {}).get(ability, 0)}]}
+                                   for ability, value in payload.get("scores", {}).items() if ability in ABILITIES}
+                        db.execute("UPDATE dnd_character SET ability_sources_json=? WHERE character_id=?", (_dump(sources), draft["character_id"]))
             roll_columns = {row["name"] for row in db.execute("PRAGMA table_info(dnd_roll_event)")}
             if "roller_key" not in roll_columns:
                 db.execute("ALTER TABLE dnd_roll_event ADD COLUMN roller_key TEXT NOT NULL DEFAULT ''")
@@ -200,6 +211,23 @@ class DndStore:
     @staticmethod
     def _clean_json_field(key: str, value: Any) -> Any:
         """Keep user-authored card data flexible but bounded and JSON-safe."""
+        if key == "ability_sources":
+            if not isinstance(value, dict) or set(value) - set(ABILITIES):
+                raise DndError("Ability sources must use the six ability names")
+            result = {}
+            for ability, entry in value.items():
+                if not isinstance(entry, dict) or type(entry.get("base")) is not int or not 1 <= entry["base"] <= 30:
+                    raise DndError("Source base scores must be whole numbers from 1 to 30")
+                increases = entry.get("increases", [])
+                if not isinstance(increases, list) or len(increases) > 12:
+                    raise DndError("Use at most 12 sources per ability")
+                clean = []
+                for source in increases:
+                    if not isinstance(source, dict) or not isinstance(source.get("label"), str) or type(source.get("points")) is not int or not -30 <= source["points"] <= 30:
+                        raise DndError("Each score source needs a label and whole-number points from -30 to 30")
+                    clean.append({"label": source["label"].strip()[:100] or "Other source", "points": source["points"]})
+                result[ability] = {"base": entry["base"], "increases": clean}
+            return result
         if key in {"abilities", "ability_scores", "saves", "skills"}:
             if not isinstance(value, dict):
                 raise DndError(f"{key} must be an object")
@@ -233,6 +261,7 @@ class DndStore:
                 clean[str(name)[:80]] = {
                     "tier": max(0, min(2, int(entry.get("tier", 0)))),
                     "adjustment": max(-99, min(99, int(entry.get("adjustment", 0)))),
+                    "adjustment_source": str(entry.get("adjustment_source", ""))[:100],
                     "override": None if entry.get("override") in (None, "") else max(-99, min(99, int(entry["override"]))),
                 }
             return clean
