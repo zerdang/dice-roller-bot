@@ -103,6 +103,23 @@ class CharacterBuilderTests(unittest.TestCase):
         self.assertTrue(self.store.delete(self.player, self.created["id"])["deleted"])
         self.assertEqual([], self.store.list_drafts(self.player))
 
+    def test_draft_summaries_show_pinned_identity_and_scores_with_increases(self):
+        empty = self.store.list_drafts(self.player)[0]
+        self.assertIsNone(empty["class_name"])
+        self.assertIsNone(empty["species_name"])
+        draft = self.complete()
+        self.store.save(self.player, self.created["id"], {"revision": 1, "draft": draft})
+        self.store.import_documents("b" * 40, [{"class": [{"name": "Different class", "source": "XPHB"}]}])
+        summary = self.store.list_drafts(self.player)[0]
+        self.assertEqual("Example Warrior", summary["class_name"])
+        self.assertEqual("Example Folk", summary["species_name"])
+        self.assertEqual({ability: draft["scores"][ability] + draft["boosts"][ability] for ability in ABILITIES}, summary["scores"])
+        self.assertEqual([], self.store.list_drafts(self.other))
+        self.store.set_policy(self.dm, ["TEST"])
+        restricted = self.store.list_drafts(self.player)[0]
+        self.assertIsNone(restricted["class_name"])
+        self.assertIsNone(restricted["species_name"])
+
     def test_valid_foundation_derives_scores_and_provenance_for_dm_review(self):
         preview = self.evaluate(self.complete())
         self.assertEqual([], preview["errors"])

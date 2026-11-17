@@ -424,6 +424,13 @@ npm run dev
 Vite proxies `/api` requests to the local bot. Production changes should always
 be followed by `npm run build` so the `web/` output matches the React source.
 
+Run `npm test` for frontend unit tests. For scrolling and viewport regressions,
+run `npx playwright install chromium` once, then `npm run test:layout` from
+`frontend/`. These browser checks use mocked campaign data and do not require
+a running bot or Discord login. They verify bottom controls across all display
+themes, desktop and mobile sizes, wrapped headers, sheets, drafts, and dock panes.
+CI runs these checks and saves screenshots and traces when a check fails.
+
 ### Standalone web service and Render
 
 The companion can run without a Discord connection or bot token:
