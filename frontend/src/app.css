@@ -1636,6 +1636,17 @@ html[data-theme="simple"] .map-stage, html[data-theme="fantasy"] .map-stage { te
 .hud-vitals article > small { color: #9fe5dd; font-size: 12px; }
 .hud-vitals article div { display: flex; gap: 5px; margin-top: 7px; }
 .hud-vitals article button { min-width: 40px; flex: 1; }
+.active-character-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.active-character-picker button.active { border-color: #72d8ca; background: #24443f; color: #dffbf7; }
+.hud-vitals article .hp-controls { display: grid; grid-template-columns: 1fr auto 1fr; }
+.concentration-check { display: grid; place-items: center; min-width: 36px; border: 1px solid #526171; border-radius: 4px; cursor: pointer; }
+.concentration-check input { position: absolute; opacity: 0; pointer-events: none; }
+.concentration-check span { color: #71808d; font-weight: 800; }
+.concentration-check input:checked + span { color: #72d8ca; }
+.hud-vitals article .damage-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.damage-entry input { min-width: 0; }
+.reference-item-picker { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; padding: 10px; border: 1px solid var(--line); }
+.reference-item-picker label { flex: 1 1 240px; }
 .hud-status { display: grid; gap: 6px; margin-top: 12px; }
 .hud-status span { padding: 8px 10px; border: 1px solid #465464; border-radius: 5px; color: var(--dnd-muted); }
 .hud-status span.active { border-color: #55c8bb; background: #153b37; color: #d4fffa; }
@@ -2225,6 +2236,7 @@ body.resizing-table-column, body.resizing-table-column * { cursor: col-resize !i
 .builder-options article > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .builder-options strong { display: block; font-size: 16px; }
 .builder-options small { display: block; color: #b7c6d5; font-size: 12px; }
+.delete-confirm { color: #ff6b6b !important; border-color: #c94f4f !important; font-weight: 700; }
 .builder-pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 14px 0; }
 .builder-choice { min-width: 0; margin: 0 0 24px; }
 .builder-choice-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }

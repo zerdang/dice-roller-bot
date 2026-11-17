@@ -96,6 +96,13 @@ class CharacterBuilderTests(unittest.TestCase):
         with self.assertRaises(DndError):
             self.store.get({**self.dm, "campaign_id": 2}, self.created["id"])
 
+    def test_owner_deletes_unapproved_draft(self):
+        with self.assertRaises(DndError) as denied:
+            self.store.delete(self.other, self.created["id"])
+        self.assertEqual(404, denied.exception.status)
+        self.assertTrue(self.store.delete(self.player, self.created["id"])["deleted"])
+        self.assertEqual([], self.store.list_drafts(self.player))
+
     def test_valid_foundation_derives_scores_and_provenance_for_dm_review(self):
         preview = self.evaluate(self.complete())
         self.assertEqual([], preview["errors"])
@@ -192,6 +199,16 @@ class CharacterBuilderTests(unittest.TestCase):
         with self.store.connect() as db:
             snapshot = db.execute("SELECT snapshot FROM creation_finalization WHERE draft_id=?", (self.created["id"],)).fetchone()[0]
         self.assertEqual("Old hero", __import__("json").loads(snapshot)["character"]["name"])
+
+    def test_player_submits_own_character_when_dm_review_is_disabled(self):
+        with self.store.connect() as db:
+            db.execute("INSERT INTO campaign(id,guild_id,name,game_system,owner_discord_user_id,warden_token_hash,created_at) VALUES(1,'g','Table','dnd','dm','token','now')")
+            db.execute("INSERT INTO character(id,campaign_id,discord_user_id,name,player_token_hash,created_at) VALUES(12,1,'player','Player','player-token','now')")
+        policy = self.store.settings(self.dm)
+        self.store.save_settings(self.dm, {**policy, "manual_review_required": False})
+        saved = self.store.save(self.player, self.created["id"], {"revision": 1, "draft": self.complete()})
+        result = self.store.finalize(self.player, self.created["id"], {"revision": saved["revision"], "reviewed": True})
+        self.assertEqual(12, result["character_id"])
 
     def test_portrait_upload_is_owned_and_normalized(self):
         image = Image.new("RGB", (900, 600), "#aaccdd")

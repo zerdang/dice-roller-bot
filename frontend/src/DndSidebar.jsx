@@ -59,15 +59,34 @@ function PartyBrowser({ roster, role, activeName, onOpenSheet }) {
   </section>;
 }
 
-function MyCharacter({ card, request, refresh, reportError, onOpenSheet, onOpenLog }) {
+function MyCharacter({ card, cards, request, refresh, reportError, onOpenSheet, onOpenLog }) {
   const [busy, setBusy] = useState(false);
+  const [damage, setDamage] = useState("");
   if (!card) return <section className="sidebar-pane"><header><div><h2>My Character</h2><p>No character is assigned to this link</p></div></header></section>;
   const delta = async (amount) => {
     if (busy) return;
     try { setBusy(true); await request(`/api/dnd/characters/${card.id}/resources`, { method: "POST", body: JSON.stringify({ field: "hp", delta: amount, operation_id: operationId() }) }); await refresh(true); }
     catch (error) { reportError(error); } finally { setBusy(false); }
   };
-  return <section className="sidebar-pane character-pane"><header><div><h2>My Character</h2><p>Encounter essentials</p></div></header><div className="character-hud"><div className="hud-identity"><span className="actor-fallback">{card.name.slice(0, 1)}</span><div><b>{card.name}</b><span>{[card.identity?.class_name, card.identity?.level ? `Level ${card.identity.level}` : ""].filter(Boolean).join(" · ") || "D&D character"}</span></div></div><div className="hud-vitals"><article><span>Hit Points</span><strong>{card.hp} / {card.max_hp}</strong>{card.temp_hp > 0 && <small>+{card.temp_hp} temporary</small>}<div><button disabled={busy} onClick={() => delta(-1)} aria-label="Decrease hit points">−</button><button disabled={busy} onClick={() => delta(1)} aria-label="Increase hit points">+</button></div></article><article><span>Armor Class</span><strong>{card.armor_class}</strong></article><article><span>Speed</span><strong>{card.speed}</strong></article></div><div className="hud-status"><span className={card.concentrating ? "active" : ""}>Concentration: {card.concentrating ? "Active" : "No"}</span><span className={card.heroic_inspiration ? "active" : ""}>Inspiration: {card.heroic_inspiration ? "Ready" : "None"}</span><span>Exhaustion: {card.exhaustion || 0}</span></div><div className="hud-conditions"><b>Conditions</b><p>{card.conditions?.length ? card.conditions.map((item) => item.name).join(", ") : "None"}</p></div><div className="hud-actions"><button type="button" className="primary-action" onClick={() => onOpenSheet(card.id)}>Open sheet</button><button type="button" onClick={onOpenLog}>Roll dice</button><button type="button" onClick={() => window.dispatchEvent(new CustomEvent("dnd-center-character", { detail: card.id }))}>Locate token</button></div></div></section>;
+  const setActive = async (characterId) => {
+    try { setBusy(true); await request("/api/dnd/characters/select", { method: "POST", body: JSON.stringify({ character_id: Number(characterId) }) }); await refresh(true); }
+    catch (error) { reportError(error); } finally { setBusy(false); }
+  };
+  const toggleConcentration = async (checked) => {
+    try { setBusy(true); await request(`/api/dnd/characters/${card.id}`, { method: "PATCH", body: JSON.stringify({ revision: card.revision, concentrating: checked ? 1 : 0 }) }); await refresh(true); }
+    catch (error) { reportError(error); } finally { setBusy(false); }
+  };
+  const dealDamage = async () => {
+    const amount = Number(damage);
+    if (!Number.isInteger(amount) || amount < 1 || busy) return;
+    try {
+      setBusy(true);
+      await request(`/api/dnd/characters/${card.id}/resources`, { method: "POST", body: JSON.stringify({ field: "damage", delta: amount, operation_id: operationId() }) });
+      if (card.concentrating) await request(`/api/dnd/characters/${card.id}/sheet-rolls`, { method: "POST", body: JSON.stringify({ field_type: "save", name: "constitution", mode: "normal", bonus: 0, audience: "public", operation_id: operationId() }) });
+      setDamage(""); await refresh(true);
+    } catch (error) { reportError(error); } finally { setBusy(false); }
+  };
+  return <section className="sidebar-pane character-pane"><header><div><h2>My Character</h2><p>Encounter essentials</p></div></header><div className="character-hud">{cards.length > 1 && <div className="active-character-picker" role="group" aria-label="Active character">{cards.map(option => <button type="button" className={option.id === card.id ? "active" : ""} aria-pressed={option.id === card.id} disabled={busy} onClick={() => setActive(option.id)} key={option.id}>{option.name}</button>)}</div>}<div className="hud-identity"><span className="actor-fallback">{card.name.slice(0, 1)}</span><div><b>{card.name}</b><span>{[card.identity?.class_name, card.identity?.level ? `Level ${card.identity.level}` : ""].filter(Boolean).join(" · ") || "D&D character"}</span></div></div><div className="hud-vitals"><article><span>Hit Points</span><strong>{card.hp} / {card.max_hp}</strong>{card.temp_hp > 0 && <small>+{card.temp_hp} temporary</small>}<div className="hp-controls"><button disabled={busy} onClick={() => delta(-1)} aria-label="Decrease hit points">−</button><label className="concentration-check" title="Concentrating"><input type="checkbox" checked={Boolean(card.concentrating)} disabled={busy} onChange={event => toggleConcentration(event.target.checked)} /><span>✓</span></label><button disabled={busy} onClick={() => delta(1)} aria-label="Increase hit points">+</button></div><div className="damage-entry"><input type="number" min="1" value={damage} onChange={event => setDamage(event.target.value)} placeholder="-X damage" aria-label="Damage amount" /><button type="button" disabled={busy || !Number.isInteger(Number(damage)) || Number(damage) < 1} onClick={dealDamage}>Deal</button></div>{card.concentrating && damage && Number(damage) > 0 && <small>Rolls a DC {Math.max(10, Math.floor(Number(damage) / 2))} Constitution save.</small>}</article><article><span>Armor Class</span><strong>{card.armor_class}</strong></article><article><span>Speed</span><strong>{card.speed}</strong></article></div><div className="hud-status"><span className={card.concentrating ? "active" : ""}>Concentration: {card.concentrating ? "Active" : "No"}</span><span className={card.heroic_inspiration ? "active" : ""}>Inspiration: {card.heroic_inspiration ? "Ready" : "None"}</span><span>Exhaustion: {card.exhaustion || 0}</span></div><div className="hud-conditions"><b>Conditions</b><p>{card.conditions?.length ? card.conditions.map((item) => item.name).join(", ") : "None"}</p></div><div className="hud-actions"><button type="button" className="primary-action" onClick={() => onOpenSheet(card.id)}>Open sheet</button><button type="button" onClick={onOpenLog}>Roll dice</button><button type="button" onClick={() => window.dispatchEvent(new CustomEvent("dnd-center-character", { detail: card.id }))}>Locate token</button></div></div></section>;
 }
 
 function SceneBrowser({ request, reportError, viewedSceneId }) {
@@ -251,7 +270,7 @@ export default function DndSidebar({ dashboard, cards, roster, rolls, audience, 
     </nav>
     {!collapsed && <div className="sidebar-content">
       {tab === "reference" && <ReferenceBrowser request={request} isWarden={isWarden} cards={cards} onGrant={() => refresh(true)} />}
-      {tab === "character" && <MyCharacter card={cards[0]} request={request} refresh={refresh} reportError={reportError} onOpenSheet={onOpenSheet} onOpenLog={() => setTab("log")} />}
+      {tab === "character" && <MyCharacter card={cards.find(card => card.id === dashboard.active_character_id) || cards[0]} cards={cards} request={request} refresh={refresh} reportError={reportError} onOpenSheet={onOpenSheet} onOpenLog={() => setTab("log")} />}
       {tab === "party" && (quickCard ? <QuickInspect card={quickCard} activeName={activeName} onBack={() => setQuickCardId(null)} onOpenSheet={onOpenSheet} /> : <PartyBrowser roster={roster} role={dashboard.role} activeName={activeName} onOpenSheet={isWarden ? setQuickCardId : onOpenSheet} />)}
       {tab === "log" && <GameLog cards={cards} rolls={rolls} role={dashboard.role} audience={audience} setAudience={setAudience} request={request} refresh={refresh} reportError={reportError} />}
       {tab === "scenes" && <SceneBrowser request={request} reportError={reportError} viewedSceneId={mapContext?.sceneId} />}

@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS web_session (
     discord_user_id TEXT NOT NULL REFERENCES web_identity(discord_user_id) ON DELETE CASCADE,
     csrf_hash TEXT NOT NULL,
     active_campaign_id INTEGER REFERENCES campaign(id) ON DELETE SET NULL,
+    active_character_id INTEGER REFERENCES character(id) ON DELETE SET NULL,
     expires_at INTEGER NOT NULL,
     revoked_at INTEGER,
     created_at INTEGER NOT NULL,
@@ -77,6 +78,9 @@ class WebAuthStore:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript(AUTH_SCHEMA)
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(web_session)")}
+            if "active_character_id" not in columns:
+                db.execute("ALTER TABLE web_session ADD COLUMN active_character_id INTEGER REFERENCES character(id) ON DELETE SET NULL")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -176,14 +180,14 @@ class WebAuthStore:
             rows = db.execute(
                 "SELECT c.id,c.name,c.game_system,'warden' role FROM campaign c "
                 "WHERE c.owner_discord_user_id=? UNION ALL "
-                "SELECT c.id,c.name,c.game_system,'player' role FROM campaign c "
+                "SELECT DISTINCT c.id,c.name,c.game_system,'player' role FROM campaign c "
                 "JOIN character ch ON ch.campaign_id=c.id WHERE ch.discord_user_id=? "
                 "AND (c.owner_discord_user_id IS NULL OR c.owner_discord_user_id<>?) ORDER BY name",
                 (discord_user_id, discord_user_id, discord_user_id),
             ).fetchall()
             return [dict(row) for row in rows]
 
-    def authorize(self, discord_user_id: str, campaign_id: int | None) -> dict[str, Any] | None:
+    def authorize(self, discord_user_id: str, campaign_id: int | None, active_character_id: int | None = None) -> dict[str, Any] | None:
         if campaign_id is None:
             return None
         with self.connect() as db:
@@ -193,14 +197,26 @@ class WebAuthStore:
             if campaign["owner_discord_user_id"] == discord_user_id:
                 return {"role": "warden", "campaign_id": campaign_id, "character_id": None,
                         "discord_user_id": discord_user_id, "game_system": campaign["game_system"]}
-            character = db.execute(
-                "SELECT id FROM character WHERE campaign_id=? AND discord_user_id=?",
+            characters = db.execute(
+                "SELECT id FROM character WHERE campaign_id=? AND discord_user_id=? ORDER BY id",
                 (campaign_id, discord_user_id),
-            ).fetchone()
-            if not character:
+            ).fetchall()
+            if not characters:
                 return None
-            return {"role": "player", "campaign_id": campaign_id, "character_id": character["id"],
+            character_ids = [row["id"] for row in characters]
+            selected = active_character_id if active_character_id in character_ids else character_ids[0]
+            return {"role": "player", "campaign_id": campaign_id, "character_id": selected,
+                    "character_ids": character_ids,
                     "discord_user_id": discord_user_id, "game_system": campaign["game_system"]}
+
+    def select_character(self, session_token: str, discord_user_id: str, campaign_id: int, character_id: int) -> bool:
+        with self.connect() as db:
+            owned = db.execute("SELECT 1 FROM character WHERE id=? AND campaign_id=? AND discord_user_id=?",
+                               (character_id, campaign_id, discord_user_id)).fetchone()
+            if not owned:
+                return False
+            return bool(db.execute("UPDATE web_session SET active_character_id=? WHERE session_hash=? AND discord_user_id=?",
+                                   (character_id, digest(session_token), discord_user_id)).rowcount)
 
     def select_campaign(self, session_token: str, discord_user_id: str, campaign_id: int) -> bool:
         if not self.authorize(discord_user_id, campaign_id):
