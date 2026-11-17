@@ -14,6 +14,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
+from functions.dnd import ACTIVE_CHARACTER_SCHEMA
 
 
 AUTH_SCHEMA = """
@@ -78,9 +79,14 @@ class WebAuthStore:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript(AUTH_SCHEMA)
+            db.executescript(ACTIVE_CHARACTER_SCHEMA)
             columns = {row["name"] for row in db.execute("PRAGMA table_info(web_session)")}
             if "active_character_id" not in columns:
                 db.execute("ALTER TABLE web_session ADD COLUMN active_character_id INTEGER REFERENCES character(id) ON DELETE SET NULL")
+            # Preserve the most recent valid selection made before campaign-wide choices.
+            db.execute("INSERT OR IGNORE INTO dnd_active_character(campaign_id,controller_id,character_id) "
+                       "SELECT c.campaign_id,s.discord_user_id,c.id FROM web_session s JOIN character c ON c.id=s.active_character_id "
+                       "WHERE c.discord_user_id=s.discord_user_id AND c.campaign_id=s.active_campaign_id ORDER BY s.last_seen_at DESC,s.rowid DESC")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -194,29 +200,33 @@ class WebAuthStore:
             campaign = db.execute("SELECT * FROM campaign WHERE id=?", (campaign_id,)).fetchone()
             if not campaign:
                 return None
-            if campaign["owner_discord_user_id"] == discord_user_id:
-                return {"role": "warden", "campaign_id": campaign_id, "character_id": None,
-                        "discord_user_id": discord_user_id, "game_system": campaign["game_system"]}
+            is_dm = campaign["owner_discord_user_id"] == discord_user_id
             characters = db.execute(
                 "SELECT id FROM character WHERE campaign_id=? AND discord_user_id=? ORDER BY id",
                 (campaign_id, discord_user_id),
             ).fetchall()
-            if not characters:
+            if not characters and not is_dm:
                 return None
             character_ids = [row["id"] for row in characters]
-            selected = active_character_id if active_character_id in character_ids else character_ids[0]
-            return {"role": "player", "campaign_id": campaign_id, "character_id": selected,
+            persisted = db.execute("SELECT character_id FROM dnd_active_character WHERE campaign_id=? AND controller_id=?", (campaign_id, discord_user_id)).fetchone()
+            choice = persisted["character_id"] if persisted else active_character_id
+            selected = choice if choice in character_ids else next(iter(character_ids), None)
+            return {"role": "warden" if is_dm else "player", "campaign_id": campaign_id, "character_id": selected,
                     "character_ids": character_ids,
                     "discord_user_id": discord_user_id, "game_system": campaign["game_system"]}
 
     def select_character(self, session_token: str, discord_user_id: str, campaign_id: int, character_id: int) -> bool:
         with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
             owned = db.execute("SELECT 1 FROM character WHERE id=? AND campaign_id=? AND discord_user_id=?",
                                (character_id, campaign_id, discord_user_id)).fetchone()
             if not owned:
                 return False
-            return bool(db.execute("UPDATE web_session SET active_character_id=? WHERE session_hash=? AND discord_user_id=?",
-                                   (character_id, digest(session_token), discord_user_id)).rowcount)
+            changed = db.execute("UPDATE web_session SET active_character_id=? WHERE session_hash=? AND discord_user_id=? AND active_campaign_id=? AND revoked_at IS NULL AND expires_at>=?",
+                                 (character_id, digest(session_token), discord_user_id, campaign_id, int(time.time()))).rowcount
+            if changed:
+                db.execute("INSERT OR REPLACE INTO dnd_active_character VALUES(?,?,?)", (campaign_id, discord_user_id, character_id))
+            return bool(changed)
 
     def select_campaign(self, session_token: str, discord_user_id: str, campaign_id: int) -> bool:
         if not self.authorize(discord_user_id, campaign_id):

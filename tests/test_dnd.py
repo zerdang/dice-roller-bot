@@ -181,6 +181,33 @@ class DndReleaseOneTests(unittest.TestCase):
             self.assertNotIn("notes", member)
             self.assertNotIn("dm_notes", member)
 
+    def test_group_metadata_uses_account_names_and_a_shared_active_character(self):
+        from functions.web_auth import WebAuthStore
+        web = WebAuthStore(self.path)
+        web.upsert_identity({"id": "2002", "username": "Ada's player", "global_name": "Alex"})
+        with self.store.connect() as db:
+            db.execute("UPDATE character SET discord_user_id='2002' WHERE id=?", (self.first["id"],))
+            db.execute("INSERT INTO character(campaign_id,discord_user_id,name,player_token_hash,created_at) SELECT campaign_id,discord_user_id,'Alternate','alternate-token',created_at FROM character WHERE id=?", (self.first["id"],))
+            alternate = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+            db.execute("INSERT INTO dnd_active_character VALUES(?,?,?)", (self.player["campaign_id"], "2002", alternate))
+        auth = web.authorize("2002", self.player["campaign_id"])
+        self.assertEqual(alternate, auth["character_id"])
+        self.store.cards(auth)
+        self.store.update_card(auth, alternate, {"revision": 1, "identity": {"class_name": "Druid", "secret": "Hidden detail"}})
+        roster = self.store.roster(auth)
+        owned = [card for card in roster if card["controller_name"] == "Alex"]
+        self.assertEqual(2, len(owned))
+        self.assertEqual(1, len({card["controller_key"] for card in owned}))
+        self.assertEqual([alternate], [card["id"] for card in owned if card["is_active"]])
+        self.assertTrue(all(card["is_own"] and card["can_open"] for card in owned))
+        self.assertEqual({"class_name": "Druid"}, next(card for card in owned if card["id"] == alternate)["identity"])
+        self.assertTrue(all("discord_user_id" not in card for card in roster))
+
+    def test_dm_only_rolls_for_a_players_character_remain_dm_only(self):
+        self.store.roll(self.dm, self.first["id"], {"expression": "1d20", "audience": "dm", "operation_id": "dm-secret"})
+        self.assertEqual([], self.store.rolls(self.player))
+        self.assertEqual(1, len(self.store.rolls(self.dm)))
+
 
 if __name__ == "__main__":
     unittest.main()

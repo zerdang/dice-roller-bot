@@ -8,6 +8,7 @@ import { ALL_SKILLS, canSelectSkill, CLASS_SKILLS, SKILL_BY_ID, SKILL_TIERS } fr
 import DndWorkspace from "./DndWorkspace.jsx";
 import { GAME_REGISTRY, preferredGame } from "./gameRegistry.js";
 import TableColumnResizer from "./TableColumnResizer.jsx";
+import FantasyIcon from "./FantasyIcon.jsx";
 
 const METRIC_PAIRS = [
   ["Strength", "Sanity"], ["Speed", "Fear"], ["Intellect", "Body"], ["Combat", "Armor"],
@@ -1006,7 +1007,7 @@ function CampaignHome({ account, reload, signOut, initialMessage = "" }) {
   const [selectedGame, setSelectedGame] = useState(preferredGame);
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem("tabletop-theme");
-    return ["crt", "simple", "fantasy"].includes(saved) ? saved : "crt";
+    return ["crt", "simple", "fantasy"].includes(saved) ? saved : active?.game_system === "dnd" ? "fantasy" : "crt";
   });
   const [crtStrength, setCrtStrength] = useState(() => {
     const saved = Number.parseInt(localStorage.getItem("tabletop-crt-strength"), 10);
@@ -1057,7 +1058,7 @@ function CampaignHome({ account, reload, signOut, initialMessage = "" }) {
 
   return <div className={`campaign-home${active?.game_system === "dnd" ? " dnd-campaign-home" : ""}`}>
     <nav className="account-bar" aria-label="Account and campaign">
-      <a href="/" className="account-brand">DM Screen</a>
+      <a href="/" className="account-brand"><span className="atlas-brand-mark"><FantasyIcon name="compass" /></span>DM Screen</a>
       <div className="account-actions">
         {account.campaigns.length > 0 && <label><span>Campaign</span><select value={account.active_campaign_id || ""} onChange={(event) => select(event.target.value)}>{!account.active_campaign_id && <option value="">Select campaign</option>}{account.campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name} · {campaign.role === "warden" ? "DM" : "Player"}</option>)}</select></label>}
         {active?.role === "warden" && <button type="button" onClick={invite}>Invite player</button>}
