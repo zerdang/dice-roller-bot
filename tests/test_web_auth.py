@@ -82,6 +82,21 @@ class WebAuthStoreTests(unittest.TestCase):
         with self.assertRaises(AuthError):
             self.auth.create_invite({"role": "player", "campaign_id": first["id"], "discord_user_id": "2002"})
 
+    def test_active_character_is_shared_across_sessions_and_campaign_scoped(self):
+        campaign = self.auth.create_campaign("1001", "Table")
+        self.auth.accept_invite(self.auth.create_invite(self.auth.authorize("1001", campaign["id"])), "2002", "Player")
+        first = self.auth.authorize("2002", campaign["id"])["character_id"]
+        with self.auth.connect() as db:
+            db.execute("INSERT INTO character(campaign_id,discord_user_id,name,player_token_hash,created_at) SELECT campaign_id,discord_user_id,'Second hero','second-hero-token',created_at FROM character WHERE id=?", (first,))
+            second = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        session, _ = self.auth.create_session("2002")
+        self.auth.select_campaign(session, "2002", campaign["id"])
+        self.assertTrue(self.auth.select_character(session, "2002", campaign["id"], second))
+        self.assertEqual(second, self.auth.authorize("2002", campaign["id"], first)["character_id"])
+        self.assertFalse(self.auth.select_character("invalid-session", "2002", campaign["id"], first))
+        self.assertFalse(self.auth.select_character(session, "1001", campaign["id"], second))
+        self.assertEqual(second, self.auth.authorize("2002", campaign["id"])["character_id"])
+
 
 class WebAuthHttpTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

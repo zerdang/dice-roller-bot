@@ -2464,6 +2464,85 @@ html body .dnd-campaign-home > .shell.dnd-shell {
   grid-template-rows: auto minmax(240px, 1fr);
   overflow-y: auto;
 }
+
+/* Quiet fantasy: linen, ink, aged brass and faint arcane geometry. */
+.fantasy-icon { width: 19px; height: 19px; flex: 0 0 19px; vertical-align: middle; }
+.party-pane > header h2, .grimoire-sheet .sheet-section-heading h3 { display: flex; align-items: center; gap: 8px; }
+.party-groups { display: flex; flex-direction: column; gap: 10px; }
+.party-groups > * { flex-shrink: 0; }
+.party-access-note { display: flex; align-items: start; gap: 8px; margin: 0 0 3px; padding: 10px; border: 1px solid #526359; border-radius: 6px; background: #24312d; color: #d3e0d5; font: 12px/1.5 "Segoe UI", sans-serif; }
+.party-access-note.dm-access { border-color: #88744d; background: #342e24; color: #e9d7ae; }
+.party-player-group { border: 1px solid #5e665e; border-radius: 8px; background: #202824; overflow: hidden; }
+.party-player-toggle { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px; border: 0; background: #2a332e; color: #f1eadb; text-align: left; text-transform: none; }
+.party-player-toggle > span:nth-child(2) { min-width: 0; flex: 1; }
+.party-player-toggle b { display: block; overflow-wrap: anywhere; font: 18px/1.3 Georgia, serif; }
+.party-player-toggle small { display: block; margin-top: 3px; color: #c2c8bb; font-size: 11px; }
+.player-monogram { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border: 1px solid #a68c57; border-radius: 50%; color: #e2cea1; font: 21px Georgia, serif; }
+.party-chevron { color: #d8c396; font-size: 24px; }
+.party-player-characters { padding: 0 8px 8px; }
+.party-player-characters[hidden] { display: none; }
+.party-player-group .party-card { margin: 8px 0 0; background: #252e29; border-color: #4f5d52; }
+.party-player-group .party-identity { color: #efe9db; }
+.party-card-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.character-active-badge { display: inline-block; padding: 3px 7px; border: 1px solid #9d895b; border-radius: 12px; color: #eddbb2; font-size: 10px; }
+.party-sheet-access { display: flex; align-items: center; gap: 6px; margin: 8px 0; color: #c5cbbd; font-size: 11px; }
+.party-sheet-access .fantasy-icon { width: 14px; height: 14px; flex-basis: 14px; }
+.party-updated { display: block; margin-top: 9px; color: #b7c2b4; font-size: 10px; }
+.party-open-sheet { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-color: #a28d5b; color: #f0dfb6; }
+
+.character-sheet.grimoire-sheet { --folio-ink: #342f26; --folio-muted: #615b50; --folio-brass: #806b40; background: #e7e0d0; border-color: #a59570; border-radius: 10px; }
+.grimoire-sheet .sheet-header { position: relative; isolation: isolate; background: #303a33; color: #f2ecdc; border-bottom: 1px solid #a18c58; }
+.grimoire-sheet .sheet-header::after { content: ""; position: absolute; z-index: -1; right: 7%; top: 50%; width: 170px; height: 170px; translate: 0 -50%; border: 1px solid #d5be7930; border-radius: 50%; background: repeating-conic-gradient(from 15deg, transparent 0deg 29deg, #d5be7918 29deg 30deg); box-shadow: inset 0 0 0 20px #303a33, inset 0 0 0 21px #d5be7920; pointer-events: none; }
+.grimoire-sheet .sheet-header h2 { color: #f4ead2; font: 30px/1.2 Georgia, "Times New Roman", serif; letter-spacing: .015em; text-transform: none; }
+.grimoire-sheet .sheet-header p, .grimoire-sheet .sheet-header span { color: #d1c9b6; }
+.grimoire-sheet .sheet-portrait { border-radius: 50% 50% 8px 8px; border-color: #aa945e; background: #495444; color: #f0e0b4; }
+.grimoire-sheet .sheet-scroll { background: radial-gradient(circle at 92% 0%, #bb9f5e12, transparent 45%), repeating-linear-gradient(0deg, #6a553906 0px, #6a553906 1px, transparent 1px, transparent 5px), #e7e0d0; color: var(--folio-ink); }
+.grimoire-sheet .sheet-summary-block { border: 1px solid #a99870; border-radius: 8px; background: #f0e9da; color: var(--folio-ink); box-shadow: inset 0 0 18px #9d865915; }
+.grimoire-sheet .ability-strip article { border: 1px solid #b3a381; border-radius: 6px 6px 14px 14px; background: #ebe3d1; color: var(--folio-ink); }
+.grimoire-sheet .ability-strip article > b, .grimoire-sheet .ability-strip article > small { color: var(--folio-muted); }
+.grimoire-sheet .sheet-left, .grimoire-sheet .sheet-skills, .grimoire-sheet .sheet-main, .grimoire-sheet .combat-section > .sheet-section-heading { color: var(--folio-ink); background: transparent; }
+.grimoire-sheet .sheet-left, .grimoire-sheet .sheet-skills { border-color: #ab9c7b; }
+.grimoire-sheet .sheet-section-heading h3, .grimoire-sheet .sheet-left h3 { color: #4c4934; font-family: Georgia, serif; font-size: 17px; letter-spacing: .015em; text-transform: none; }
+.grimoire-sheet .sheet-section-heading .fantasy-icon { color: var(--folio-brass); }
+.grimoire-sheet .save-row, .grimoire-sheet .skill-row { border-color: #b2a586; }
+.grimoire-sheet .skill-row small, .grimoire-sheet .training-mark { color: var(--folio-muted); }
+.grimoire-sheet .sheet-roll-control > button { border-color: #9b8c68; background: #f7f0e0; color: #3e4234; }
+.grimoire-sheet .combat-summary article { background: #f1eadb; border: 1px solid #aa9a74; color: var(--folio-ink); }
+.grimoire-sheet .combat-summary article > b, .grimoire-sheet .combat-summary article > span { color: var(--folio-muted); }
+.grimoire-sheet .sheet-tabs button { display: flex; justify-content: center; align-items: center; gap: 6px; border-color: #a59775; background: #dcd3bd; color: #494432; }
+.grimoire-sheet .sheet-tabs button.active { border-color: #7b704d; background: #43513f; color: #f7edcf; box-shadow: inset 0 -2px #c9b478; }
+.grimoire-sheet .sheet-tab-panel { background: #f1eadb; border: 1px solid #b6a784; }
+.grimoire-sheet .action-card { background: #e7dfcd; border-color: #bbac8c; color: var(--folio-ink); }
+.grimoire-sheet .action-card small, .grimoire-sheet .action-card p, .grimoire-sheet .empty-state, .grimoire-sheet .inventory-sheet-list small { color: var(--folio-muted); }
+.grimoire-sheet .dm-private-field { background: #e7deed; border-color: #8a6c96; color: #392e41; }
+.grimoire-sheet .dm-private-field > span { color: #594064; }
+.sheet-access-bar { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 6px 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid #ac9a71; background: #ded8c6; color: #3e4937; font: 12px/1.5 "Segoe UI", sans-serif; }
+.sheet-access-bar small { margin-left: auto; font-size: 11px; }
+.sheet-access-bar.dm-access { background: #e2d5ba; color: #574728; }
+.character-sheet-tabs { display: flex; flex: 0 0 auto; gap: 4px; overflow: auto; padding: 7px; background: #242e28; border-bottom: 1px solid #9d8b5e; }
+.character-sheet-tabs > button { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; min-width: 110px; max-width: 210px; padding: 7px 11px; border: 1px solid #586456; border-radius: 6px; background: transparent; color: #d7d6c3; text-align: left; text-transform: none; }
+.character-sheet-tabs > button[aria-selected="true"] { border-color: #bda46b; background: #43513f; color: #fff0cb; }
+.character-sheet-tabs > button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.character-sheet-tabs small { display: block; color: #bec6b5; font-size: 10px; }
+.dnd-workspace .party-pane > header { background: #29332e; }
+.dnd-workspace .party-pane > header h2 { color: #eee4ca; font: 24px/1.25 Georgia, serif; text-transform: none; }
+.dnd-workspace .party-pane > header p { color: #c2cabb; }
+.dnd-workspace .party-pane button { background: #2b3a30; color: #e9e5d7; border-color: #69745d; font: 13px/1.4 "Segoe UI", sans-serif; text-transform: none; letter-spacing: normal; box-shadow: none; border-radius: 5px; }
+.dnd-workspace .party-pane button:hover { background: #3b493a; border-color: #b6a16b; }
+.dnd-workspace .party-pane .party-player-toggle { padding: 12px; border: 0; border-radius: 0; background: #303b31; color: #eee4cc; }
+.dnd-workspace .party-pane .party-identity { background: transparent; border: 0; padding: 6px 0; }
+.dnd-workspace .party-pane .party-identity small { color: #c9cfbf; }
+.dnd-workspace .party-pane .party-open-sheet { border-color: #b29d65; color: #f5e5b9; }
+.character-sheet.grimoire-sheet button { text-transform: none; letter-spacing: normal; font-family: "Segoe UI", sans-serif; }
+.character-sheet.grimoire-sheet .sheet-header { overflow: hidden; }
+.character-sheet.grimoire-sheet .sheet-header > button { background: #3f4c3d; color: #f0e5c8; border: 1px solid #a38f5c; border-radius: 5px; box-shadow: none; }
+.character-sheet.grimoire-sheet .sheet-header::after { opacity: .35; }
+.character-sheet.grimoire-sheet .character-sheet-tabs > button { background: #2f3b31; color: #e3dec9; border-color: #69745b; border-radius: 5px; box-shadow: none; }
+.character-sheet.grimoire-sheet .character-sheet-tabs > button[aria-selected="true"] { background: #4d5a45; color: #fff1c6; border-color: #c8af70; }
+.character-sheet.grimoire-sheet .character-sheet-tabs small { color: #d0d4c4; }
+.character-sheet.grimoire-sheet .sheet-left > section { background: transparent; color: #342f26; border-color: #b3a482; }
+.character-sheet.grimoire-sheet .sheet-list-editor label { color: #5f5745; }
+.character-sheet.grimoire-sheet .combat-summary { background: transparent; border: 0; padding: 4px; }
 html body .shell.dnd-shell {
   display: flex;
   flex-direction: column;

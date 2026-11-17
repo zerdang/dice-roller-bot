@@ -11,7 +11,16 @@ from datetime import datetime, timezone
 from typing import Any, Iterator
 
 
-DND_SCHEMA = """
+ACTIVE_CHARACTER_SCHEMA = """
+CREATE TABLE IF NOT EXISTS dnd_active_character (
+    campaign_id INTEGER NOT NULL REFERENCES campaign(id) ON DELETE CASCADE,
+    controller_id TEXT NOT NULL,
+    character_id INTEGER NOT NULL REFERENCES character(id) ON DELETE CASCADE,
+    PRIMARY KEY(campaign_id, controller_id)
+);
+"""
+
+DND_SCHEMA = ACTIVE_CHARACTER_SCHEMA + """
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS dnd_character (
     character_id INTEGER PRIMARY KEY REFERENCES character(id) ON DELETE CASCADE,
@@ -269,8 +278,26 @@ class DndStore:
         self._require_dnd(auth)
         with self.connect() as db:
             bases = db.execute("SELECT * FROM character WHERE campaign_id=? ORDER BY name", (auth["campaign_id"],)).fetchall()
+            campaign = db.execute("SELECT owner_discord_user_id FROM campaign WHERE id=?", (auth["campaign_id"],)).fetchone()
+            identities = {}
+            if db.execute("SELECT 1 FROM sqlite_master WHERE name='web_identity'").fetchone():
+                identities = {row["discord_user_id"]: row["display_name"] for row in db.execute(
+                    "SELECT i.discord_user_id, COALESCE(NULLIF(i.global_name,''),i.username) display_name FROM web_identity i "
+                    "WHERE i.discord_user_id IN (SELECT discord_user_id FROM character WHERE campaign_id=?)", (auth["campaign_id"],))}
+            selected = {row["controller_id"]: row["character_id"] for row in db.execute(
+                "SELECT * FROM dnd_active_character WHERE campaign_id=?", (auth["campaign_id"],))}
+            owners = {}
+            for base in bases:
+                key = base["discord_user_id"] or f"unassigned:{base['id']}"
+                owners.setdefault(key, []).append(base)
             result = []
             for base in bases:
+                owner = base["discord_user_id"] or f"unassigned:{base['id']}"
+                owned = sorted(owners[owner], key=lambda item: item["id"])
+                active_id = selected.get(owner)
+                if active_id not in {item["id"] for item in owned}:
+                    active_id = owned[0]["id"] if base["discord_user_id"] else None
+                is_dm = bool(base["discord_user_id"] and base["discord_user_id"] == campaign["owner_discord_user_id"])
                 self._ensure(db, base["id"])
                 full = self._doc(db.execute("SELECT * FROM dnd_character WHERE character_id=?", (base["id"],)).fetchone(), base)
                 scores = full.get("ability_scores", {})
@@ -281,7 +308,13 @@ class DndStore:
                     passives[skill] = 10 + (value if training.get("override") is None else int(training["override"]))
                 result.append({
                     "id": base["id"], "name": base["name"], "hp": base["hp"], "max_hp": base["max_hp"],
-                    "armor_class": full["armor_class"], "speed": full["speed"], "identity": full.get("identity", {}),
+                    "armor_class": full["armor_class"], "speed": full["speed"],
+                    "identity": {key: value for key, value in full.get("identity", {}).items() if key in {"class_name", "species", "level"}},
+                    "controller_key": f"controller-{owned[0]['id']}" if base["discord_user_id"] else "unassigned",
+                    "controller_name": identities.get(owner, "DM" if is_dm else owned[0]["name"]) if base["discord_user_id"] else "Unassigned",
+                    "controller_is_dm": is_dm, "is_active": base["id"] == active_id,
+                    "is_own": base["discord_user_id"] == auth.get("discord_user_id") if auth.get("discord_user_id") else base["id"] in auth.get("character_ids", [auth.get("character_id")]),
+                    "updated_at": full["updated_at"],
                     "conditions": full.get("conditions", []), "exhaustion": full["exhaustion"],
                     "death_successes": full["death_successes"], "death_failures": full["death_failures"],
                     "passives": passives, "can_open": self._can_edit(auth, base["id"]),
@@ -489,6 +522,8 @@ class DndStore:
             rows = db.execute("SELECT * FROM dnd_roll_event WHERE campaign_id=? ORDER BY id DESC LIMIT ?", (auth["campaign_id"], min(100, max(1, limit)))).fetchall()
         result = []
         for row in rows:
+            if auth["role"] != "warden" and row["audience"] == "dm":
+                continue
             if auth["role"] != "warden" and row["audience"] != "public" and row["character_id"] not in auth.get("character_ids", [auth["character_id"]]):
                 continue
             item = dict(row); item["dice"] = json.loads(item.pop("dice_json")); item["selected"] = json.loads(item.pop("selected_json")); item["is_own"] = item.pop("roller_key", "") == self._actor(auth); result.append(item)
