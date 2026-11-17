@@ -134,8 +134,21 @@ class CharacterBuilderStore(ReferenceStore):
     def list_drafts(self, auth):
         owner = self.owner(auth)
         with self.connect() as db:
-            rows = db.execute("SELECT id,payload,revision,updated_at,owner FROM creation_draft WHERE campaign_id=?" + ("" if auth["role"] == "warden" else " AND owner=?") + " ORDER BY updated_at DESC,id", [auth["campaign_id"]] + ([] if auth["role"] == "warden" else [owner])).fetchall()
-            return [{"id": r["id"], "name": json.loads(r["payload"])["name"] or "Unnamed draft", "revision": r["revision"], "updated_at": r["updated_at"], "is_own": r["owner"] == owner} for r in rows]
+            rows = db.execute("SELECT id,payload,revision,updated_at,owner,version FROM creation_draft WHERE campaign_id=?" + ("" if auth["role"] == "warden" else " AND owner=?") + " ORDER BY updated_at DESC,id", [auth["campaign_id"]] + ([] if auth["role"] == "warden" else [owner])).fetchall()
+            result = []
+            for row in rows:
+                payload = json.loads(row["payload"])
+                cls = self.selected(db, auth, row["version"], payload.get("class_id"), {"class"})
+                species = self.selected(db, auth, row["version"], payload.get("species_id"), {"race"})
+                # Show saved scores with background increases, as in the draft review.
+                scores, boosts = payload.get("scores", {}), payload.get("boosts", {})
+                result.append({"id": row["id"], "name": payload.get("name") or "Unnamed draft",
+                               "revision": row["revision"], "updated_at": row["updated_at"], "is_own": row["owner"] == owner,
+                               "class_name": cls["name"] if cls else None,
+                               "species_name": species["name"] if species else None,
+                               "scores": {ability: scores[ability] + boosts.get(ability, 0) if ability in scores else None
+                                          for ability in ABILITIES}})
+            return result
 
     def delete(self, auth, draft_id):
         with self.connect() as db:

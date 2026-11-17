@@ -311,5 +311,28 @@ export default function CharacterBuilder({ request, isWarden, onClose, onFinaliz
     } catch (e) { if (alive.current) setError(e.message); }
     finally { if (alive.current) setBusy(false); }
   };
-  return <div className="creation-backdrop">{active ? <DraftEditor key={active.id} initial={active} request={request} isWarden={isWarden} onFinalized={onFinalized} onBack={() => { setActive(null); requestAnimationFrame(() => panel.current?.focus()); }} /> : <section className="creation-dialog creation-drafts" role="dialog" aria-modal="true" aria-label="Character creation drafts" ref={panel} tabIndex={-1} onKeyDown={listKeys}><header className="creation-header"><div><h2>Character drafts</h2><p>Start a build or pick up where you left off.</p></div><button disabled={busy} onClick={onClose}>Close</button></header><main className="creation-main">{error && <p role="alert">{error}</p>}<button disabled={busy} onClick={() => open(null)}>{busy ? "Opening…" : "New character draft"}</button><p>Drafts leave your live character unchanged. Your DM can review your saved choices.</p><div className="builder-options">{drafts.map(draft => <article key={draft.id}><div><strong>{draft.name}</strong><small>{draft.is_own ? "Your draft" : "Campaign draft"} · {new Date(draft.updated_at).toLocaleString()}</small></div><button disabled={busy} onClick={() => open(draft.id)}>Resume</button>{deleteId === draft.id ? <><button className="delete-record delete-confirm" disabled={busy} onClick={() => remove(draft.id)}>Delete permanently</button><button disabled={busy} onClick={() => setDeleteId("")}>Cancel</button></> : <button className="delete-record" disabled={busy} onClick={() => setDeleteId(draft.id)}>Delete</button>}</article>)}</div></main></section>}</div>;
+  return <div className="creation-backdrop">{active
+    ? <DraftEditor key={active.id} initial={active} request={request} isWarden={isWarden} onFinalized={onFinalized} onBack={() => { setActive(null); requestAnimationFrame(() => panel.current?.focus()); }} />
+    : <section className="creation-dialog creation-drafts" role="dialog" aria-modal="true" aria-label="Character creation drafts" ref={panel} tabIndex={-1} onKeyDown={listKeys}>
+      <header className="creation-header"><div><h2>Character drafts</h2><p>Start a build or pick up where you left off.</p></div><button disabled={busy} onClick={onClose}>Close</button></header>
+      <main className="creation-main">
+        {error && <p role="alert">{error}</p>}
+        <button disabled={busy} onClick={() => open(null)}>{busy ? "Opening…" : "New character draft"}</button>
+        <p>Drafts leave your live character unchanged. Your DM can review your saved choices.</p>
+        <div className="builder-options draft-summary-list">{drafts.map(draft => <article key={draft.id}>
+          <div className="draft-summary-identity">
+            <strong>{draft.name}</strong>
+            <p className="draft-summary-description">{draft.class_name || "Class not chosen"} · {draft.species_name || "Species not chosen"}</p>
+            <small>{draft.is_own ? "Your draft" : "Campaign draft"} · {new Date(draft.updated_at).toLocaleString()}</small>
+          </div>
+          <dl className="draft-summary-scores" aria-label={`${draft.name} ability scores`}>
+            {ABILITIES.map(ability => <div key={ability}><dt title={title(ability)}>{ability.slice(0, 3).toUpperCase()}</dt><dd>{draft.scores?.[ability] ?? "—"}</dd></div>)}
+          </dl>
+          <div className="draft-summary-actions">
+            <button disabled={busy} onClick={() => open(draft.id)}>Resume</button>
+            {deleteId === draft.id ? <><button className="delete-record delete-confirm" disabled={busy} onClick={() => remove(draft.id)}>Delete permanently</button><button disabled={busy} onClick={() => setDeleteId("")}>Cancel</button></> : <button className="delete-record" disabled={busy} onClick={() => setDeleteId(draft.id)}>Delete</button>}
+          </div>
+        </article>)}</div>
+      </main>
+    </section>}</div>;
 }
