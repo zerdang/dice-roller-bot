@@ -755,7 +755,8 @@ class CharacterBuilderStore(ReferenceStore):
             spell_ability = SHORT.get(cls["raw"].get("spellcastingAbility"))
             spell_modifier = preview["modifiers"].get(spell_ability, 0)
             identity = {"species": species["name"], "class_name": cls["name"], "background": background["name"], "level": "1"}
-            fields = {"ability_scores_json": preview["scores"], "abilities_json": preview["modifiers"],
+            sources = {ability: {"base": payload["scores"][ability], "increases": [{"label": f"Background Points ({background['name']})", "points": payload["boosts"][ability]}]} for ability in ABILITIES}
+            fields = {"ability_scores_json": preview["scores"], "abilities_json": preview["modifiers"], "ability_sources_json": sources,
                       "skill_training_json": skill_training, "save_training_json": save_training,
                       "identity_json": identity, "inventory_json": inventory, "features_json": features,
                       "spells_json": spells, "spell_slots_json": {"1": {"current": first_level_slots, "max": first_level_slots}} if first_level_slots else {},

@@ -21,6 +21,7 @@ async function openDraft(page, theme = "fantasy", options = {}) {
   const requests = [];
   let campaignPolicy = { ...policy, flexible_background_abilities: !options.restricted };
   const role = options.role || "player";
+  const availableSpells = options.longSpells ? spells.map(item => item.id === "shield" ? { ...item, name: "Mordenkainen's Unusually Long Shield of Protection Against Magical Effects", source: "An Unusually Long Source Identifier" } : item) : spells;
   let draft = { name: "Test wizard", class_id: "wizard", background_id: "soldier", method: options.method || "array", scores: options.scores || scores, boosts: { ...Object.fromEntries(abilities.map(a => [a, 0])), ...options.boosts }, class_skills: [], equipment: {}, spell_ids: [], language_ids: options.language_ids || [], notes: "" };
   const boostOptions = eligible => eligible.flatMap(a => eligible.filter(b => a !== b).map(b => ({ [a]: 2, [b]: 1 }))).concat(eligible.flatMap((a, i) => eligible.slice(i + 1).flatMap((b, j) => eligible.slice(i + j + 2).map(c => ({ [a]: 1, [b]: 1, [c]: 1 })))));
   let revision = 1;
@@ -30,7 +31,7 @@ async function openDraft(page, theme = "fantasy", options = {}) {
     class_skill_options: [], eligible_boosts: campaignPolicy.flexible_background_abilities ? abilities : abilities.slice(0, 3),
     boost_options: boostOptions(campaignPolicy.flexible_background_abilities ? abilities : abilities.slice(0, 3)),
     scores: Object.fromEntries(abilities.map(a => [a, draft.scores[a] + draft.boosts[a]])), modifiers: scores,
-    spells: spells.filter(spell => draft.spell_ids.includes(spell.id)).map(spell => ({ ...spell, level: spell.metadata.level })),
+    spells: availableSpells.filter(spell => draft.spell_ids.includes(spell.id)).map(spell => ({ ...spell, level: spell.metadata.level })),
     spell_limits: { cantrips: 1, level_one: 1 }, spell_eligibility_ready: true,
     languages: languages.filter(item => item.ids.some(id => draft.language_ids.includes(id))),
   });
@@ -56,10 +57,12 @@ async function openDraft(page, theme = "fantasy", options = {}) {
       const list = url.searchParams.get("spell_list");
       const level = url.searchParams.get("level");
       const school = url.searchParams.get("school");
-      const items = url.searchParams.get("kind") !== "spell" ? [] : spells.filter(spell =>
+      const items = url.searchParams.get("kind") !== "spell" ? [] : availableSpells.filter(spell =>
         (list === "all" || (list === "cleric" ? spell.id === "bless" : spell.eligible_for_character)) &&
         (!level || String(spell.metadata.level) === level) && (!school || spell.metadata.school === "Abjuration" && school === "A"));
       value = { items, total: items.length, spell_lists: lists };
+    } else if (path.startsWith("/api/dnd/reference/entries/")) {
+      value = { ...availableSpells.find(item => item.id === path.split("/").at(-1)), text: "A long spell description with magical effects and additional rules.\n\n".repeat(50) + "End of spell rules." };
     } else if (path === "/api/dnd/creation/drafts/1") {
       if (route.request().method() === "PUT") { draft = route.request().postDataJSON().draft; revision++; }
       value = { id: "1", revision, version: "v1", draft, preview: preview() };
@@ -206,4 +209,99 @@ test(`${width}px: languages show unique names without books and remove all legac
   await picker.getByRole("button", { name: "Abyssal", exact: true }).click();
   await expect(picker.getByRole("status")).toContainText("2 / 2");
 });
+}
+
+async function spellTableFits(page) {
+  const failures = await page.locator("#builder-options").evaluate(main => {
+    const failures = [];
+    const bounds = main.getBoundingClientRect();
+    for (const node of [main, ...main.querySelectorAll(".builder-result-list, table, tbody td, tbody button, .builder-filter-bar select, .builder-filter-bar input")]) {
+      if (!node.getClientRects().length) continue;
+      const rect = node.getBoundingClientRect();
+      if (rect.left < bounds.left - 1 || rect.right > bounds.right + 1 || node.scrollWidth > node.clientWidth + 2) failures.push(node.className || node.tagName);
+    }
+    return failures;
+  });
+  expect(failures).toEqual([]);
+}
+
+for (const theme of ["fantasy", "crt", "simple"]) {
+  test(`${theme}: resize spell panes with pointer and keyboard without clipping columns`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => localStorage.setItem("table-columns:/:builder-result-table", JSON.stringify([900, 300, 400, 300, 300])));
+    await openDraft(page, theme, { longSpells: true });
+    await page.getByRole("button", { name: "Spells", exact: true }).click();
+    const separator = page.getByRole("separator", { name: "Resize options and details panels" });
+    await expect(separator).toBeVisible();
+    await expect(page.getByRole("button", { name: /Details for Mordenkainen/ })).toBeVisible();
+    await expect(page.locator(".builder-result-table")).not.toHaveClass(/resizable-table/);
+    await spellTableFits(page);
+    const before = await page.locator("#builder-options").boundingBox();
+    const handle = await separator.boundingBox();
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle.x - 180, handle.y + handle.height / 2, { steps: 6 });
+    await page.mouse.up();
+    const after = await page.locator("#builder-options").boundingBox();
+    expect(after.width).toBeLessThan(before.width - 100);
+    await separator.press("Home");
+    await expect(separator).toHaveAttribute("aria-valuenow", "25");
+    await spellTableFits(page);
+    await page.getByRole("button", { name: /Details for Mordenkainen/ }).click();
+    await expect(page.locator(".builder-source-text")).toContainText("End of spell rules.");
+    await expect(separator).toHaveAttribute("aria-valuenow", "25");
+    await spellTableFits(page);
+    await separator.press("End");
+    await expect(separator).toHaveAttribute("aria-valuenow", "75");
+    await spellTableFits(page);
+    expect(await page.locator("#builder-details").evaluate(panel => panel.scrollWidth <= panel.clientWidth + 1)).toBe(true);
+    const detailScroll = page.locator(".builder-source-scroll");
+    await detailScroll.evaluate(panel => panel.scrollTop = panel.scrollHeight);
+    expect(await detailScroll.evaluate(panel => panel.scrollTop > 0 && panel.scrollHeight - panel.scrollTop <= panel.clientHeight + 1)).toBe(true);
+    await page.getByRole("button", { name: "Expand", exact: true }).click();
+    await expect(separator).toHaveCount(0);
+    await page.getByRole("button", { name: "Show choices", exact: true }).click();
+    await expect(separator).toHaveAttribute("aria-valuenow", "75");
+    await separator.press("ArrowLeft");
+    await expect(separator).toHaveAttribute("aria-valuenow", "73");
+    await page.getByRole("button", { name: "Save & close", exact: true }).click();
+    await page.getByRole("button", { name: "Resume", exact: true }).click();
+    await page.getByRole("button", { name: "Spells", exact: true }).click();
+    await expect(separator).toHaveAttribute("aria-valuenow", "73");
+    await separator.dblclick();
+    await expect(separator).toHaveAttribute("aria-valuenow", "55");
+    await spellTableFits(page);
+    if (theme === "fantasy") {
+      await page.getByRole("button", { name: /Details for Mordenkainen/ }).click();
+      await expect(page.locator(".builder-source-text")).toContainText("End of spell rules.");
+      await expect(page.locator("#builder-details")).toHaveCSS("background-color", "rgb(35, 49, 56)");
+      const longRow = page.getByRole("row").filter({ has: page.getByRole("button", { name: /Details for Mordenkainen/ }) });
+      await longRow.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath("resizable-spell-panes.png") });
+      await separator.press("Home");
+      await longRow.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath("compact-spell-pane.png") });
+    }
+  });
+}
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
+  test(`${viewport.width}px: narrow spell rows fit and details remain readable`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await openDraft(page, "fantasy", { longSpells: true });
+    await page.getByRole("button", { name: "Spells", exact: true }).click();
+    await expect(page.getByRole("button", { name: /Details for Mordenkainen/ })).toBeVisible();
+    await expect(page.getByRole("separator", { name: "Resize options and details panels" })).toBeHidden();
+    await spellTableFits(page);
+    const row = page.getByRole("row").filter({ has: page.getByRole("button", { name: /Details for Mordenkainen/ }) });
+    await row.getByRole("button", { name: "Select", exact: true }).click();
+    await expect(row.getByRole("button", { name: "Remove", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /Details for Mordenkainen/ }).click();
+    await expect(page.locator(".builder-source-text")).toContainText("End of spell rules.");
+    await expect(page.locator("#builder-options")).toBeHidden();
+    expect(await page.locator("#builder-details").evaluate(panel => panel.scrollWidth <= panel.clientWidth + 1)).toBe(true);
+    await page.getByRole("button", { name: "Close details", exact: true }).click();
+    await expect(page.locator("#builder-options")).toBeVisible();
+    await spellTableFits(page);
+  });
 }
