@@ -58,6 +58,7 @@ function DraftEditor({ initial, request, onBack, isWarden, onFinalized }) {
   const [policyBusy, setPolicyBusy] = useState(false);
   const [finalizedId, setFinalizedId] = useState(initial.finalized_character_id || null);
   const [approvalBusy, setApprovalBusy] = useState(false);
+  const [controllerId, setControllerId] = useState(initial.owner_controller_id || "");
   const [portraitUrl, setPortraitUrl] = useState(initial.portrait_url || "");
   const [portraitBusy, setPortraitBusy] = useState(false);
   const [detailPanel, setDetailPanel] = useState(null);
@@ -179,8 +180,10 @@ function DraftEditor({ initial, request, onBack, isWarden, onFinalized }) {
     try {
       await saveSnapshot(JSON.stringify(current.current));
       if (preview.errors.length) { setStep(preview.errors[0].step); throw new Error("Resolve the listed choices before approval."); }
-      if (!window.confirm(`Approve this draft and ${initial.target ? `replace ${initial.target.name}'s current sheet` : "create an unassigned character"}? The current sheet will be saved for recovery.`)) return;
-      const value = await request(`/api/dnd/creation/drafts/${initial.id}/finalize`, { method: "POST", body: JSON.stringify({ revision: revision.current, target_revision: initial.target?.revision ?? null, replace_existing: Boolean(initial.target), reviewed: true }) });
+      const controller = initial.controllers?.find(item => item.id === controllerId);
+      if (isWarden && !controllerId) throw new Error("Choose who will control this character.");
+      if (!window.confirm(`${isWarden ? "Approve" : "Submit"} this draft and add ${draft.name || "this character"} under ${controller?.name || "your"} control?`)) return;
+      const value = await request(`/api/dnd/creation/drafts/${initial.id}/finalize`, { method: "POST", body: JSON.stringify({ revision: revision.current, controller_id: controllerId, reviewed: true }) });
       setFinalizedId(value.character_id); await onFinalized?.();
     } catch (e) { setError(e.message); }
     finally { setApprovalBusy(false); }
@@ -221,10 +224,10 @@ function DraftEditor({ initial, request, onBack, isWarden, onFinalized }) {
   const catalogStep = ["class", "origin", "spells"].includes(step);
   if (finalizedId) return <section className="creation-dialog creation-drafts" role="dialog" aria-modal="true" aria-label="Approved character draft" ref={dialog} tabIndex={-1} onKeyDown={trap}><header className="creation-header"><h2>{draft.name}</h2><button onClick={onBack}>Back to drafts</button></header><main className="creation-main"><p role="status">This draft was approved as character #{finalizedId}. Open the character sheet from the party to use it.</p></main></section>;
   return <section className={`creation-dialog${detailPanel ? " detail-open" : ""}`} role="dialog" aria-modal="true" aria-label="Character draft builder" ref={dialog} tabIndex={-1} onKeyDown={trap}>
-    <header className="creation-header"><div><h2>Build your character</h2><p>Level 1 · Revised 2024 rules · Saved separately from your live sheet</p></div><span role="status">{status}</span><button className="creation-reload" onClick={reload}>Reload saved draft</button><button onClick={close}>Save & close</button></header>
+    <header className="creation-header"><div><h2>Build your character</h2><p>Level 1 · Revised 2024 rules · Saved separately from your live sheet</p></div><span role="status">{status}</span>{!isWarden && !preview.policy.manual_review_required && step === "review" && <button disabled={approvalBusy || preview.errors.length > 0} onClick={finalize}>{approvalBusy ? "Submitting…" : "Submit character"}</button>}<button className="creation-reload" onClick={reload}>Reload saved draft</button><button onClick={close}>Save & close</button></header>
     {error && <div className="creation-error" role="alert">{error} Your changes remain in this window. Reload to resolve a conflict.</div>}
     <nav className="creation-steps" aria-label="Character creation steps">{STEPS.map(([id, label]) => <button key={id} aria-current={step === id ? "step" : undefined} onClick={() => setStep(id)}>{label}</button>)}</nav>
-    <div className="creation-name"><label>Character name<input maxLength={100} value={draft.name} onChange={e => apply("name", e.target.value)} /></label></div>
+    <div className="creation-name"><label>Character name<input maxLength={100} value={draft.name} onChange={e => apply("name", e.target.value)} /></label>{isWarden && <label>Controlled by<select value={controllerId} onChange={e => setControllerId(e.target.value)}><option value="">Choose a campaign member</option>{initial.controllers?.map(controller => <option value={controller.id} key={controller.id}>{controller.name}{controller.is_dm ? " (DM)" : ""}</option>)}</select></label>}</div>
     <div className={`creation-body${catalogStep ? " has-catalog" : ""}${detailPanel ? " has-detail" : ""}${detailExpanded ? " expanded" : ""}`}><main className="creation-main" ref={mainScroll}>
       {step === "spells" && <section className="builder-spell-step"><header className="builder-step-heading"><div><h3>Choose spells</h3><p>Choices are limited to spells available to your selected class. Innate spells are tracked separately and do not use these choices.</p></div></header>
         <div className="builder-spell-counts"><div className={cantripCount === cantripLimit ? "complete" : ""}><span>Cantrips</span><strong>{cantripCount} / {cantripLimit}</strong></div><div className={levelOneCount === levelOneLimit ? "complete" : ""}><span>Level-one spells</span><strong>{levelOneCount} / {levelOneLimit}</strong></div></div>
@@ -272,6 +275,7 @@ export default function CharacterBuilder({ request, isWarden, onClose, onFinaliz
   const [active, setActive] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [deleteId, setDeleteId] = useState("");
   const createKey = useRef(crypto.randomUUID());
   const launcher = useRef(document.activeElement);
   const panel = useRef(null);
@@ -299,5 +303,13 @@ export default function CharacterBuilder({ request, isWarden, onClose, onFinaliz
       else if (!e.shiftKey && document.activeElement === nodes.at(-1)) { e.preventDefault(); nodes[0]?.focus(); }
     }
   };
-  return <div className="creation-backdrop">{active ? <DraftEditor key={active.id} initial={active} request={request} isWarden={isWarden} onFinalized={onFinalized} onBack={() => { setActive(null); requestAnimationFrame(() => panel.current?.focus()); }} /> : <section className="creation-dialog creation-drafts" role="dialog" aria-modal="true" aria-label="Character creation drafts" ref={panel} tabIndex={-1} onKeyDown={listKeys}><header className="creation-header"><div><h2>Character drafts</h2><p>Start a build or pick up where you left off.</p></div><button disabled={busy} onClick={onClose}>Close</button></header><main className="creation-main">{error && <p role="alert">{error}</p>}<button disabled={busy} onClick={() => open(null)}>{busy ? "Opening…" : "New character draft"}</button><p>Drafts leave your live character unchanged. Your DM can review your saved choices.</p><div className="builder-options">{drafts.map(draft => <article key={draft.id}><div><strong>{draft.name}</strong><small>{draft.is_own ? "Your draft" : "Campaign draft"} · {new Date(draft.updated_at).toLocaleString()}</small></div><button disabled={busy} onClick={() => open(draft.id)}>Resume</button></article>)}</div></main></section>}</div>;
+  const remove = async id => {
+    setBusy(true); setError("");
+    try {
+      await request(`/api/dnd/creation/drafts/${id}`, { method: "DELETE" });
+      if (alive.current) { setDrafts(current => current.filter(draft => draft.id !== id)); setDeleteId(""); }
+    } catch (e) { if (alive.current) setError(e.message); }
+    finally { if (alive.current) setBusy(false); }
+  };
+  return <div className="creation-backdrop">{active ? <DraftEditor key={active.id} initial={active} request={request} isWarden={isWarden} onFinalized={onFinalized} onBack={() => { setActive(null); requestAnimationFrame(() => panel.current?.focus()); }} /> : <section className="creation-dialog creation-drafts" role="dialog" aria-modal="true" aria-label="Character creation drafts" ref={panel} tabIndex={-1} onKeyDown={listKeys}><header className="creation-header"><div><h2>Character drafts</h2><p>Start a build or pick up where you left off.</p></div><button disabled={busy} onClick={onClose}>Close</button></header><main className="creation-main">{error && <p role="alert">{error}</p>}<button disabled={busy} onClick={() => open(null)}>{busy ? "Opening…" : "New character draft"}</button><p>Drafts leave your live character unchanged. Your DM can review your saved choices.</p><div className="builder-options">{drafts.map(draft => <article key={draft.id}><div><strong>{draft.name}</strong><small>{draft.is_own ? "Your draft" : "Campaign draft"} · {new Date(draft.updated_at).toLocaleString()}</small></div><button disabled={busy} onClick={() => open(draft.id)}>Resume</button>{deleteId === draft.id ? <><button className="delete-record delete-confirm" disabled={busy} onClick={() => remove(draft.id)}>Delete permanently</button><button disabled={busy} onClick={() => setDeleteId("")}>Cancel</button></> : <button className="delete-record" disabled={busy} onClick={() => setDeleteId(draft.id)}>Delete</button>}</article>)}</div></main></section>}</div>;
 }

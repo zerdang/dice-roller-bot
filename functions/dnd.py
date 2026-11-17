@@ -161,7 +161,7 @@ class DndStore:
 
     @staticmethod
     def _can_edit(auth: dict[str, Any], character_id: int) -> bool:
-        return auth["role"] == "warden" or auth.get("character_id") == character_id
+        return auth["role"] == "warden" or character_id in auth.get("character_ids", [auth.get("character_id")])
 
     def _character(self, db: sqlite3.Connection, auth: dict[str, Any], character_id: int) -> sqlite3.Row:
         row = db.execute("SELECT * FROM character WHERE id=? AND campaign_id=?", (character_id, auth["campaign_id"])).fetchone()
@@ -252,8 +252,12 @@ class DndStore:
         with self.connect() as db:
             if auth["role"] == "warden":
                 bases = db.execute("SELECT * FROM character WHERE campaign_id=? ORDER BY name", (auth["campaign_id"],)).fetchall()
+            elif auth.get("discord_user_id"):
+                bases = db.execute("SELECT * FROM character WHERE campaign_id=? AND discord_user_id=? ORDER BY name,id", (auth["campaign_id"], auth["discord_user_id"])).fetchall()
             else:
-                bases = db.execute("SELECT * FROM character WHERE id=? AND campaign_id=?", (auth["character_id"], auth["campaign_id"])).fetchall()
+                ids = auth.get("character_ids", [auth["character_id"]])
+                placeholders = ",".join("?" for _ in ids)
+                bases = db.execute(f"SELECT * FROM character WHERE campaign_id=? AND id IN ({placeholders}) ORDER BY name,id", [auth["campaign_id"], *ids]).fetchall()
             result = []
             for base in bases:
                 self._ensure(db, base["id"])
@@ -280,7 +284,7 @@ class DndStore:
                     "armor_class": full["armor_class"], "speed": full["speed"], "identity": full.get("identity", {}),
                     "conditions": full.get("conditions", []), "exhaustion": full["exhaustion"],
                     "death_successes": full["death_successes"], "death_failures": full["death_failures"],
-                    "passives": passives, "can_open": auth["role"] == "warden" or auth.get("character_id") == base["id"],
+                    "passives": passives, "can_open": self._can_edit(auth, base["id"]),
                 })
         return result
 
@@ -340,7 +344,7 @@ class DndStore:
         if not operation_id:
             raise DndError("operation_id is required")
         field = str(payload.get("field", ""))
-        allowed = {"hp", "temp_hp", "death_successes", "death_failures", "heroic_inspiration", "exhaustion"}
+        allowed = {"hp", "damage", "temp_hp", "death_successes", "death_failures", "heroic_inspiration", "exhaustion"}
         if field not in allowed:
             raise DndError("Unsupported resource")
         delta = max(-9999, min(9999, int(payload.get("delta", 0))))
@@ -350,7 +354,15 @@ class DndStore:
             if prior:
                 return json.loads(prior["response_json"])
             base = self._character(db, auth, character_id); self._ensure(db, character_id)
-            if field == "hp":
+            if field == "damage":
+                damage = max(0, delta)
+                sheet = db.execute("SELECT temp_hp FROM dnd_character WHERE character_id=?", (character_id,)).fetchone()
+                absorbed = min(sheet["temp_hp"], damage)
+                value = max(0, base["hp"] - (damage - absorbed))
+                db.execute("UPDATE character SET hp=? WHERE id=?", (value, character_id))
+                db.execute("UPDATE dnd_character SET temp_hp=?,revision=revision+1,updated_at=? WHERE character_id=?",
+                           (sheet["temp_hp"] - absorbed, _now(), character_id))
+            elif field == "hp":
                 value = max(0, min(base["max_hp"], base["hp"] + delta))
                 db.execute("UPDATE character SET hp=? WHERE id=?", (value, character_id))
                 db.execute("UPDATE dnd_character SET revision=revision+1,updated_at=? WHERE character_id=?", (_now(), character_id))
@@ -477,7 +489,7 @@ class DndStore:
             rows = db.execute("SELECT * FROM dnd_roll_event WHERE campaign_id=? ORDER BY id DESC LIMIT ?", (auth["campaign_id"], min(100, max(1, limit)))).fetchall()
         result = []
         for row in rows:
-            if auth["role"] != "warden" and row["audience"] != "public" and row["character_id"] != auth["character_id"]:
+            if auth["role"] != "warden" and row["audience"] != "public" and row["character_id"] not in auth.get("character_ids", [auth["character_id"]]):
                 continue
             item = dict(row); item["dice"] = json.loads(item.pop("dice_json")); item["selected"] = json.loads(item.pop("selected_json")); item["is_own"] = item.pop("roller_key", "") == self._actor(auth); result.append(item)
         return result

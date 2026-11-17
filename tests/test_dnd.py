@@ -51,6 +51,25 @@ class DndReleaseOneTests(unittest.TestCase):
         self.assertEqual(3, first["death_failures"])
         self.assertEqual(first, duplicate)
 
+    def test_damage_uses_temporary_hp_before_hit_points(self):
+        card = self.store.cards(self.player)[0]
+        self.store.update_card(self.player, self.first["id"], {"revision": card["revision"], "temp_hp": 4})
+        damaged = self.store.resource_delta(self.player, self.first["id"], {
+            "field": "damage", "delta": 7, "operation_id": "damage-once",
+        })
+        self.assertEqual(0, damaged["temp_hp"])
+        self.assertEqual(7, damaged["hp"])
+
+    def test_player_can_open_and_edit_each_controlled_character(self):
+        with self.companion.connect() as db:
+            db.execute("INSERT INTO character(campaign_id,discord_user_id,name,player_token_hash,created_at) SELECT campaign_id,discord_user_id,'Ada Two','second-token',created_at FROM character WHERE id=?", (self.first["id"],))
+            second_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        auth = {**self.player, "character_ids": [self.first["id"], second_id]}
+        cards = self.store.cards(auth)
+        self.assertEqual({"Ada", "Ada Two"}, {card["name"] for card in cards})
+        changed = self.store.update_card(auth, second_id, {"revision": 1, "armor_class": 17})
+        self.assertEqual(17, changed["armor_class"])
+
     @patch("functions.dnd.secrets.randbelow", side_effect=[4, 18, 15, 2])
     def test_advantage_and_disadvantage_select_one_d20(self, _random):
         advantage = self.store.roll(self.player, self.first["id"], {

@@ -86,6 +86,7 @@ class Companion(commands.Cog):
         app.router.add_static("/assets/", WEB_ROOT / "assets")
         app.router.add_static("/images/", WEB_ROOT / "images")
         app.router.add_get("/api/dashboard", self.get_dashboard)
+        app.router.add_post("/api/dnd/characters/select", self.select_dnd_character)
         app.router.add_patch("/api/dnd/characters/{character_id}", self.patch_dnd_character)
         app.router.add_post("/api/dnd/characters/{character_id}/resources", self.post_dnd_resource)
         app.router.add_post("/api/dnd/characters/{character_id}/rolls", self.post_dnd_roll)
@@ -142,6 +143,16 @@ class Companion(commands.Cog):
         except (TypeError, ValueError):
             raise web.HTTPBadRequest(text="Invalid D&D sheet roll request")
 
+    async def select_dnd_character(self, request: web.Request) -> web.Response:
+        session = self._session(request)
+        try:
+            character_id = int((await request.json()).get("character_id"))
+        except (TypeError, ValueError):
+            raise web.HTTPBadRequest(text="Choose a character")
+        if not self.web_auth.select_character(request.cookies["dm_session"], session["discord_user_id"], session["active_campaign_id"], character_id):
+            raise web.HTTPForbidden(text="You do not control that character")
+        return web.json_response({"character_id": character_id})
+
     @staticmethod
     def _dnd_http_error(error: DndError):
         return {400: web.HTTPBadRequest, 403: web.HTTPForbidden, 404: web.HTTPNotFound,
@@ -177,7 +188,7 @@ class Companion(commands.Cog):
     def auth(self, request: web.Request):
         session = self._session(request, required=False)
         if session:
-            auth = self.web_auth.authorize(session["discord_user_id"], session["active_campaign_id"])
+            auth = self.web_auth.authorize(session["discord_user_id"], session["active_campaign_id"], session.get("active_character_id"))
             if not auth:
                 raise web.HTTPForbidden(text="Select a campaign you belong to.")
             auth["auth_method"] = "session"
@@ -374,6 +385,7 @@ class Companion(commands.Cog):
         auth = self.auth(request)
         dashboard = self.store.dashboard(auth)
         if auth.get("game_system") == "dnd":
+            dashboard["active_character_id"] = auth.get("character_id")
             dashboard["dnd_characters"] = self.dnd.cards(auth)
             dashboard["dnd_roster"] = self.dnd.roster(auth)
             dashboard["dnd_rolls"] = self.dnd.rolls(auth)

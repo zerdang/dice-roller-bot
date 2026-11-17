@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS character (
     warden_notes TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS character_discord_campaign
+CREATE INDEX IF NOT EXISTS character_discord_campaign
     ON character(campaign_id, discord_user_id)
     WHERE discord_user_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS inventory_item (
@@ -147,6 +147,9 @@ class CompanionStore:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript(SCHEMA)
+            # Campaign members may control multiple characters.
+            db.execute("DROP INDEX IF EXISTS character_discord_campaign")
+            db.execute("CREATE INDEX character_discord_campaign ON character(campaign_id, discord_user_id) WHERE discord_user_id IS NOT NULL")
             self._migrate_campaign(db)
             self._migrate_character(db)
             self._migrate_inventory(db)

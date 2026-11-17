@@ -86,12 +86,15 @@ class CharacterBuilderStore(ReferenceStore):
         flexible_background_abilities = body.get("flexible_background_abilities", False)
         if type(flexible_background_abilities) is not bool:
             raise DndError("Flexible background abilities must be true or false")
+        manual_review_required = body.get("manual_review_required", True)
+        if type(manual_review_required) is not bool:
+            raise DndError("DM character review must be true or false")
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             current = self.campaign_policy(db, auth["campaign_id"])
             if body.get("revision") != current["revision"]:
                 raise DndError("Creation settings changed; reload before saving", 409)
-            value = {"methods": sorted(set(methods)), "manual_review_required": True,
+            value = {"methods": sorted(set(methods)), "manual_review_required": manual_review_required,
                      "flexible_background_abilities": flexible_background_abilities}
             db.execute("INSERT OR REPLACE INTO creation_policy VALUES(?,?,?)", (auth["campaign_id"], current["revision"] + 1, json.dumps(value)))
         return self.settings(auth)
@@ -133,6 +136,18 @@ class CharacterBuilderStore(ReferenceStore):
         with self.connect() as db:
             rows = db.execute("SELECT id,payload,revision,updated_at,owner FROM creation_draft WHERE campaign_id=?" + ("" if auth["role"] == "warden" else " AND owner=?") + " ORDER BY updated_at DESC,id", [auth["campaign_id"]] + ([] if auth["role"] == "warden" else [owner])).fetchall()
             return [{"id": r["id"], "name": json.loads(r["payload"])["name"] or "Unnamed draft", "revision": r["revision"], "updated_at": r["updated_at"], "is_own": r["owner"] == owner} for r in rows]
+
+    def delete(self, auth, draft_id):
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = self.owned(db, auth, draft_id)
+            if row["owner"] != self.owner(auth) and auth["role"] != "warden":
+                raise DndError("You cannot delete this draft", 403)
+            if db.execute("SELECT 1 FROM creation_finalization WHERE draft_id=?", (draft_id,)).fetchone():
+                raise DndError("Approved drafts are retained with their character", 409)
+            db.execute("DELETE FROM creation_portrait WHERE draft_id=?", (draft_id,))
+            db.execute("DELETE FROM creation_draft WHERE id=?", (draft_id,))
+        return {"deleted": True, "id": draft_id}
 
     @staticmethod
     def clean(body):
@@ -542,6 +557,12 @@ class CharacterBuilderStore(ReferenceStore):
                     sheet = db.execute("SELECT revision FROM dnd_character WHERE character_id=?", (target["id"],)).fetchone()
                     result["target"] = {"id": target["id"], "name": target["name"], "revision": sheet["revision"]}
                 result["finalized_character_id"] = finalized["character_id"] if finalized else None
+                controllers = db.execute(
+                    "SELECT owner_discord_user_id id, 'DM' name FROM campaign WHERE id=? "
+                    "UNION SELECT discord_user_id, MIN(name) FROM character WHERE campaign_id=? AND discord_user_id IS NOT NULL GROUP BY discord_user_id",
+                    (auth["campaign_id"], auth["campaign_id"])).fetchall()
+                result["controllers"] = [{"id": item["id"], "name": item["name"], "is_dm": item["id"] == auth.get("discord_user_id")} for item in controllers]
+                result["owner_controller_id"] = row["owner"][5:] if row["owner"].startswith("user:") else auth.get("discord_user_id")
             return result
 
     def preview(self, auth, draft_id, body):
@@ -571,14 +592,15 @@ class CharacterBuilderStore(ReferenceStore):
                            eligible_class=eligible_class)
 
     def finalize(self, auth, draft_id, body):
-        """DM approval applies a validated draft once, preserving the prior sheet."""
-        if auth.get("role") != "warden":
-            raise DndError("Only the DM can approve a character draft", 403)
+        """Apply a validated draft after DM review, or let its owner submit when review is disabled."""
         if not isinstance(body, dict) or type(body.get("revision")) is not int:
             raise DndError("Draft revision is required")
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = self.owned(db, auth, draft_id)
+            policy = self.campaign_policy(db, auth["campaign_id"])
+            if policy["manual_review_required"] and auth.get("role") != "warden":
+                raise DndError("This campaign requires DM character approval", 403)
             prior = db.execute("SELECT character_id FROM creation_finalization WHERE draft_id=?", (draft_id,)).fetchone()
             if prior:
                 return {"character_id": prior["character_id"], "already_finalized": True}
@@ -590,23 +612,27 @@ class CharacterBuilderStore(ReferenceStore):
                 raise DndError("Resolve all draft errors before approval", 409)
             if preview["review"] and not body.get("reviewed") is True:
                 raise DndError("Confirm manual review of source-dependent choices", 409)
-            player_id = row["owner"][5:] if row["owner"].startswith("user:") else None
-            existing = db.execute("SELECT * FROM character WHERE campaign_id=? AND discord_user_id=?", (auth["campaign_id"], player_id)).fetchone() if player_id else None
+            player_id = str(body.get("controller_id") or (row["owner"][5:] if row["owner"].startswith("user:") else auth.get("discord_user_id")))
+            if auth.get("role") != "warden" and player_id != auth.get("discord_user_id"):
+                raise DndError("Players can only add characters under their own control", 403)
+            allowed = db.execute("SELECT 1 FROM campaign WHERE id=? AND owner_discord_user_id=? UNION SELECT 1 FROM character WHERE campaign_id=? AND discord_user_id=?",
+                                 (auth["campaign_id"], player_id, auth["campaign_id"], player_id)).fetchone()
+            if not allowed:
+                raise DndError("Choose a campaign member to control this character", 409)
+            existing = db.execute("SELECT ch.* FROM character ch LEFT JOIN creation_finalization f ON f.character_id=ch.id WHERE ch.campaign_id=? AND ch.discord_user_id=? AND f.character_id IS NULL ORDER BY ch.id LIMIT 1", (auth["campaign_id"], player_id)).fetchone()
             if existing:
                 character_id = existing["id"]
                 DndStore._ensure(db, character_id)
                 card = db.execute("SELECT * FROM dnd_character WHERE character_id=?", (character_id,)).fetchone()
-                if body.get("target_revision") != card["revision"]:
+                if body.get("target_revision") is not None and body.get("target_revision") != card["revision"]:
                     raise DndError("Live sheet changed; reload before approving", 409)
-                if body.get("replace_existing") is not True:
-                    raise DndError("Confirm replacement of the existing character sheet", 409)
                 snapshot = json.dumps({"character": dict(existing), "sheet": dict(card)})
             else:
                 if body.get("target_revision") is not None:
                     raise DndError("The target character changed; reload", 409)
                 snapshot = json.dumps({"character": None, "sheet": None})
                 db.execute("INSERT INTO character(campaign_id,discord_user_id,name,player_token_hash,created_at) VALUES(?,?,?,?,?)",
-                           (auth["campaign_id"], None, payload["name"], secrets.token_hex(32), _now()))
+                           (auth["campaign_id"], player_id, payload["name"], secrets.token_hex(32), _now()))
                 character_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
                 DndStore._ensure(db, character_id)
             cls = self.selected(db, auth, row["version"], payload["class_id"], {"class"})
@@ -684,7 +710,7 @@ class CharacterBuilderStore(ReferenceStore):
 
     def character_portrait(self, auth, character_id):
         self.require_auth(auth)
-        if auth["role"] != "warden" and auth.get("character_id") != character_id:
+        if auth["role"] != "warden" and character_id not in auth.get("character_ids", [auth.get("character_id")]):
             raise DndError("Portrait not found", 404)
         with self.connect() as db:
             row = db.execute("SELECT p.image FROM creation_finalization f JOIN creation_portrait p ON p.draft_id=f.draft_id "

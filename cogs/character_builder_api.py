@@ -15,6 +15,7 @@ class CharacterBuilderApi:
         app.router.add_post("/api/dnd/creation/drafts", self.create)
         app.router.add_get("/api/dnd/creation/drafts/{draft_id}", self.get)
         app.router.add_put("/api/dnd/creation/drafts/{draft_id}", self.save)
+        app.router.add_delete("/api/dnd/creation/drafts/{draft_id}", self.delete)
         app.router.add_post("/api/dnd/creation/drafts/{draft_id}/preview", self.preview)
         app.router.add_post("/api/dnd/creation/drafts/{draft_id}/roll", self.roll)
         app.router.add_get("/api/dnd/creation/drafts/{draft_id}/options", self.options)
@@ -60,6 +61,9 @@ class CharacterBuilderApi:
     async def save(self, request):
         auth = self.auth(request)
         return await self.call(self.store.save, auth, request.match_info["draft_id"], await self.body(request))
+
+    async def delete(self, request):
+        return await self.call(self.store.delete, self.auth(request), request.match_info["draft_id"])
 
     async def preview(self, request):
         auth = self.auth(request)

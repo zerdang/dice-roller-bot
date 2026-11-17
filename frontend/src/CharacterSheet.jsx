@@ -28,8 +28,25 @@ function RollButton({ label, onRoll }) {
 }
 
 function ListEditor({ items, fields, onChange, addLabel }) {
+  const [referenceItems, setReferenceItems] = useState([]);
+  const [referenceId, setReferenceId] = useState("");
+  useEffect(() => {
+    if (addLabel !== "Item") return undefined;
+    let active = true;
+    fetch("/api/dnd/reference?kind=item&offset=0", { credentials: "same-origin" })
+      .then(response => response.ok ? response.json() : Promise.reject(new Error("Reference unavailable")))
+      .then(value => { if (active) setReferenceItems(value.items || []); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [addLabel]);
   const update = (index, key, value) => onChange(items.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item));
-  return <div className="sheet-list-editor">{items.map((item, index) => <article key={item.id || index}>{fields.map((field) => <label key={field.key}>{field.label}<input type={field.type || "text"} value={item[field.key] ?? ""} onChange={(event) => update(index, field.key, field.type === "number" ? Number(event.target.value) : event.target.value)} /></label>)}<button className="delete-record" type="button" aria-label={`Remove ${item.name || "entry"}`} onClick={() => onChange(items.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></article>)}<button type="button" onClick={() => onChange([...items, { id: operationId(), name: `New ${addLabel.toLowerCase()}` }])}>Add {addLabel}</button></div>;
+  const addReference = () => {
+    const selected = referenceItems.find(item => item.id === referenceId);
+    if (!selected) return;
+    onChange([...items, { id: operationId(), name: selected.name, quantity: 1, notes: `Reference: ${selected.source} · ${selected.id}` }]);
+    setReferenceId("");
+  };
+  return <div className="sheet-list-editor">{items.map((item, index) => <article key={item.id || index}>{fields.map((field) => <label key={field.key}>{field.label}<input type={field.type || "text"} value={item[field.key] ?? ""} onChange={(event) => update(index, field.key, field.type === "number" ? Number(event.target.value) : event.target.value)} /></label>)}<button className="delete-record" type="button" aria-label={`Remove ${item.name || "entry"}`} onClick={() => onChange(items.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></article>)}{addLabel === "Item" && referenceItems.length > 0 && <div className="reference-item-picker"><label>From reference<select value={referenceId} onChange={event => setReferenceId(event.target.value)}><option value="">Choose an imported item</option>{referenceItems.map(item => <option value={item.id} key={item.id}>{item.name} · {item.source}</option>)}</select></label><button type="button" disabled={!referenceId} onClick={addReference}>Add reference item</button></div>}<button type="button" onClick={() => onChange([...items, { id: operationId(), name: `New ${addLabel.toLowerCase()}` }])}>Add custom {addLabel}</button></div>;
 }
 
 function SectionHeading({ title, editing, onEdit, onSave, onCancel }) {
