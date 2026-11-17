@@ -1,0 +1,215 @@
+/* Campaign-atlas fantasy theme. Layout/scroll ownership stays in app.css. */
+.atlas-brand-mark, .atlas-map-compass { display: none; }
+
+html[data-theme="fantasy"] .dnd-campaign-home {
+  color-scheme: dark;
+  --atlas-bg: #1c282e;
+  --atlas-panel: #233138;
+  --atlas-raised: #2b3a3e;
+  --atlas-gold: #c1a36a;
+  --atlas-text: #f0ddb5;
+  --atlas-muted: #beaf91;
+  --atlas-line: #7d6947;
+  --atlas-green: #4e7954;
+  --atlas-grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%23ffffff' opacity='.045' filter='url(%23grain)' d='M0 0h180v180H0z'/%3E%3C/svg%3E");
+  --phosphor: var(--atlas-text);
+  --phosphor-hot: #f7e5bd;
+  --dim: var(--atlas-muted);
+  --line: var(--atlas-line);
+  --line-hot: var(--atlas-gold);
+  --panel: var(--atlas-panel);
+  --screen: var(--atlas-bg);
+  --amber: #d1ac65;
+  --black: #152025;
+  background: var(--atlas-grain), radial-gradient(ellipse at 50% 0, #344249, #1b282e 75%);
+  color: var(--atlas-text);
+  font: 15px/1.5 Georgia, "Palatino Linotype", serif;
+}
+html[data-theme="fantasy"] .dnd-campaign-home .dnd-workspace {
+  --dnd-bg: transparent;
+  --dnd-panel: var(--atlas-panel);
+  --dnd-raised: var(--atlas-raised);
+  --dnd-text: var(--atlas-text);
+  --dnd-muted: var(--atlas-muted);
+  --dnd-accent: #b9a06d;
+  font-family: Georgia, "Palatino Linotype", serif;
+}
+html[data-theme="fantasy"] .dnd-campaign-home .shell.dnd-shell { background: transparent; }
+html[data-theme="fantasy"] .dnd-campaign-home .account-bar {
+  background: var(--atlas-grain), #1c292fe8;
+  border-bottom: 1px solid #9c8051;
+  box-shadow: 0 3px 12px #0004;
+  gap: 16px;
+}
+html[data-theme="fantasy"] .dnd-campaign-home .account-brand {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 9px;
+  color: #f4deb0;
+  font: 22px/1.2 Georgia, serif;
+  text-transform: none;
+  letter-spacing: .02em;
+}
+html[data-theme="fantasy"] .dnd-campaign-home .atlas-brand-mark { display: inline-flex; color: #d2ad69; }
+html[data-theme="fantasy"] .dnd-campaign-home .atlas-brand-mark .fantasy-icon { width: 40px; height: 40px; flex-basis: 40px; }
+html[data-theme="fantasy"] .dnd-campaign-home :is(button, input, select, textarea) {
+  border: 1px solid #796746;
+  border-radius: 4px;
+  background: var(--atlas-grain), #26353a;
+  color: #efdfbd;
+  font-family: Georgia, "Palatino Linotype", serif;
+  text-shadow: 0 1px #0005;
+  text-transform: none;
+  letter-spacing: .01em;
+  box-shadow: inset 0 1px #ead7a410;
+}
+html[data-theme="fantasy"] .dnd-campaign-home :is(input, select, textarea) { caret-color: #f4e4c5; }
+html[data-theme="fantasy"] .dnd-campaign-home :is(input, textarea)::placeholder { color: #c0b298; opacity: .85; }
+html[data-theme="fantasy"] .dnd-campaign-home button:hover { border-color: #cbb17a; background-color: #344349; color: #fff0cb; }
+html[data-theme="fantasy"] .dnd-campaign-home :focus-visible { outline: 2px solid #e8cc8d; outline-offset: 3px; }
+html[data-theme="fantasy"] .dnd-campaign-home input[type="checkbox"] { accent-color: #76946b; }
+html[data-theme="fantasy"] .dnd-campaign-home .account-actions label span,
+html[data-theme="fantasy"] .dnd-campaign-home .account-actions > span { color: #d3c09b; }
+html[data-theme="fantasy"] .dnd-campaign-home .account-actions button { padding-inline: 10px; }
+html[data-theme="fantasy"] .dnd-campaign-home .tabletop-shell { background: transparent; }
+html[data-theme="fantasy"] .dnd-campaign-home .map-column .battlemap-workspace { padding: 0 12px 12px; }
+html[data-theme="fantasy"] .dnd-campaign-home .battlemap-header { padding: 10px 3px; gap: 9px; border-bottom: 0; }
+html[data-theme="fantasy"] .dnd-campaign-home .compact-table-title h2 { color: #ecd4a2; font: 20px/1.3 Georgia, serif; text-transform: none; }
+html[data-theme="fantasy"] .dnd-campaign-home .compact-table-title span { color: #c1b08d; }
+html[data-theme="fantasy"] .dnd-campaign-home .scene-visibility { color: #d7dfb5; border-color: #6a825b; background: #233a2e; border-radius: 4px; }
+html[data-theme="fantasy"] .dnd-campaign-home .battlemap-layout,
+html[data-theme="fantasy"] .dnd-campaign-home .battlemap-empty-with-dock { gap: 10px; border: 0; background: transparent; }
+
+/* Slate frames with brass edging, inset hairlines and small corner ornaments. */
+html[data-theme="fantasy"] .dnd-campaign-home .table-sidebar {
+  border: 1px solid #a68a54;
+  border-radius: 8px;
+  background: var(--atlas-grain), linear-gradient(120deg, #29373d, #1d2a30);
+  box-shadow: inset 0 0 0 3px #101c2455, 0 3px 12px #0005;
+}
+html[data-theme="fantasy"] .dnd-campaign-home .table-sidebar:not(.collapsed) > nav { background: #18272b99; border-bottom: 1px solid #83704c; }
+html[data-theme="fantasy"] .dnd-campaign-home .table-sidebar:has(.creation-backdrop) { z-index: 200; }
+html[data-theme="fantasy"] .dnd-campaign-home .table-sidebar > nav button { border: 1px solid transparent; background: transparent; color: #cab17c; box-shadow: none; }
+html[data-theme="fantasy"] .dnd-campaign-home .table-sidebar > nav button.active { border-color: #a48b56; background: #314039; box-shadow: inset 0 -2px #628358; color: #f0dca9; }
+html[data-theme="fantasy"] .dnd-campaign-home .sidebar-pane > header {
+  background: linear-gradient(135deg, #c6a06540 0 1px, transparent 1px) top left / 14px 14px no-repeat, transparent;
+  border-bottom: 1px solid #796849;
+}
+html[data-theme="fantasy"] .dnd-campaign-home .sidebar-pane > header h2 { color: #f0d7a4; font: 23px/1.25 Georgia, serif; text-transform: none; letter-spacing: .015em; }
+html[data-theme="fantasy"] .dnd-campaign-home .sidebar-pane > header p { color: #c7b695; font-family: Georgia, serif; }
+html[data-theme="fantasy"] .dnd-campaign-home .sidebar-pane { padding-bottom: 4px; scroll-padding-block: 8px; }
+html[data-theme="fantasy"] .dnd-campaign-home .sidebar-nav-icon { stroke-width: 1.4; }
+html[data-theme="fantasy"] .dnd-campaign-home .sidebar-search { background: #17252aa0; border-color: #6f6043; }
+html[data-theme="fantasy"] .dnd-campaign-home .party-access-note { background: #19272b; border-color: #645b45; color: #d9c8a5; }
+html[data-theme="fantasy"] .dnd-campaign-home .party-access-note.dm-access { background: #352f25aa; border-color: #927c50; color: #e8d1a0; }
+html[data-theme="fantasy"] .dnd-campaign-home .party-player-group { background: #1c2b30; border: 1px solid #84714e; border-radius: 7px; }
+html[data-theme="fantasy"] .dnd-campaign-home .party-pane .party-player-toggle { background: var(--atlas-grain), linear-gradient(110deg, #34433e, #25333a); color: #f4dfb2; border-bottom: 1px solid #786747; }
+html[data-theme="fantasy"] .dnd-campaign-home .party-player-toggle small { color: #c4b494; }
+html[data-theme="fantasy"] .dnd-campaign-home .player-monogram { background: #1e2b2c; border: 1px solid #c0a36a; color: #e6ca8f; }
+html[data-theme="fantasy"] .dnd-campaign-home .party-player-group .party-card { background: var(--atlas-grain), #26363a; border: 1px solid #665d45; }
+html[data-theme="fantasy"] .dnd-campaign-home .party-pane .party-identity { color: #f2dfb6; background: transparent; }
+html[data-theme="fantasy"] .dnd-campaign-home .party-pane .party-identity small,
+html[data-theme="fantasy"] .dnd-campaign-home :is(.party-sheet-access, .party-updated) { color: #c5b797; }
+html[data-theme="fantasy"] .dnd-campaign-home .party-pane .party-actions button { background: #1b2b2d; border-color: #80704d; color: #e5d2a8; font-family: Georgia, serif; }
+html[data-theme="fantasy"] .dnd-campaign-home .party-stats b { color: #f1ddae; font: 23px/1.3 Georgia, serif; }
+html[data-theme="fantasy"] .dnd-campaign-home .party-stats span { color: #c6b897; }
+html[data-theme="fantasy"] .dnd-campaign-home .actor-fallback { background: #30403c; border: 1px solid #b69b63; color: #f5dfae; font-family: Georgia, serif; box-shadow: inset 0 0 0 2px #182527; }
+html[data-theme="fantasy"] .dnd-campaign-home :is(.character-active-badge, .turn-chip) { border: 1px solid #8d8853; background: #2b4030; color: #dddfa4; }
+
+/* Parchment is reserved for the map; uploaded artwork keeps its own colors. */
+html[data-theme="fantasy"] .dnd-campaign-home .map-stage {
+  border: 1px solid #b39259;
+  border-radius: 8px;
+  background: var(--atlas-grain), radial-gradient(ellipse at 48% 38%, #eddbb3 0, #d7b785 66%, #b48b54 100%);
+  box-shadow: inset 0 0 35px #6e491d55, 0 4px 16px #0005;
+}
+html[data-theme="fantasy"] .dnd-campaign-home .map-background { fill: #dac295; stroke: #9e7b43; filter: url(#map-paper-grain); }
+html[data-theme="fantasy"] .dnd-campaign-home .map-grid-overlay { opacity: .43; }
+html[data-theme="fantasy"] .dnd-campaign-home .map-grid-overlay pattern path,
+html[data-theme="fantasy"] .dnd-campaign-home .map-stage pattern path { stroke: #9c7d48; }
+html[data-theme="fantasy"] .dnd-campaign-home .map-token .token-outline { stroke: #ceae69; stroke-width: 2.5; filter: drop-shadow(0 2px 2px #1a160e99); }
+html[data-theme="fantasy"] .dnd-campaign-home .map-token.selected .token-outline { stroke: #507950; stroke-width: 4; }
+html[data-theme="fantasy"] .dnd-campaign-home .atlas-map-compass { display: grid; place-items: center; position: absolute; z-index: 1; right: 20px; bottom: 16px; color: #795b2b; opacity: .48; pointer-events: none; }
+html[data-theme="fantasy"] .dnd-campaign-home .atlas-map-compass .fantasy-icon { width: 78px; height: 78px; stroke-width: .8; }
+html[data-theme="fantasy"] .dnd-campaign-home .atlas-map-compass > span { font: 10px/1 Georgia, serif; }
+html[data-theme="fantasy"] .dnd-campaign-home .atlas-map-compass small { position: absolute; top: 50%; width: 105px; word-spacing: 70px; font-size: 9px; white-space: nowrap; }
+html[data-theme="fantasy"] .dnd-campaign-home .map-tools { border: 1px solid #8e784e; border-radius: 7px; background: var(--atlas-grain), #243238; padding-block: 10px; }
+html[data-theme="fantasy"] .dnd-campaign-home .map-tool-button { background: transparent; color: #d7bd85; border-color: transparent; }
+html[data-theme="fantasy"] .dnd-campaign-home .map-tool-button.active { border-color: #a38a53; background: #38503a; color: #f2dfad; }
+html[data-theme="fantasy"] .dnd-campaign-home .map-tool-hint { color: #c4b08a; }
+/* The map tools sit on the parchment like a small brass-bound instrument tray. */
+html[data-theme="fantasy"] .dnd-campaign-home .battlemap-layout { grid-template-columns: minmax(0, 1fr) auto; }
+html[data-theme="fantasy"] .dnd-campaign-home .battlemap-layout > .map-stage { grid-column: 1; grid-row: 1; }
+html[data-theme="fantasy"] .dnd-campaign-home .battlemap-layout > .table-sidebar { grid-column: 2; grid-row: 1; }
+html[data-theme="fantasy"] .dnd-campaign-home .battlemap-layout > .map-tools {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  justify-self: end;
+  display: flex;
+  flex-direction: row;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  min-width: 0;
+  max-height: 74px;
+  margin: 12px;
+  padding: 5px;
+  gap: 3px;
+  overflow: auto;
+  box-shadow: inset 0 0 0 2px #0e1b1f77, 0 3px 9px #33250e66;
+}
+html[data-theme="fantasy"] .dnd-campaign-home .map-tools .map-tool-button { width: 36px; height: 38px; min-height: 38px; flex: 0 0 36px; padding: 7px; }
+html[data-theme="fantasy"] .dnd-campaign-home .map-tools .shape-tool { display: flex; flex-direction: row; }
+html[data-theme="fantasy"] .dnd-campaign-home .map-tools .shape-tool-menu { grid-template-columns: repeat(4, 36px); padding: 0 3px; }
+html[data-theme="fantasy"] .dnd-campaign-home .map-tools .tool-separator { width: 1px; height: 25px; margin-inline: 3px; border-top: 0; border-left: 1px solid #88724b; }
+html[data-theme="fantasy"] .dnd-campaign-home .map-tools .map-tool-hint { display: none; }
+html[data-theme="fantasy"] .dnd-campaign-home .battlemap-empty { display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 24px; border: 1px solid #8d774c; border-radius: 8px; color: #d7c29a; background: var(--atlas-grain), radial-gradient(ellipse, #314148, #202e34); }
+html[data-theme="fantasy"] .dnd-campaign-home .battlemap-empty button { align-self: center; }
+
+html[data-theme="fantasy"] .dnd-campaign-home .log-scroll { background: var(--atlas-grain), #1c2a30aa; }
+html[data-theme="fantasy"] .dnd-campaign-home .chat-roll-row .log-card { color: #eddbb3; border: 1px solid #716346; background: #29383b; border-radius: 5px; box-shadow: none; }
+html[data-theme="fantasy"] .dnd-campaign-home .chat-roll-row.own .log-card { background: #2d3d34; border-color: #86916a; }
+html[data-theme="fantasy"] .dnd-campaign-home .log-card summary :is(b, strong) { color: #f0d8a1; font-family: Georgia, serif; }
+html[data-theme="fantasy"] .dnd-campaign-home .log-card :is(summary small, footer),
+html[data-theme="fantasy"] .dnd-campaign-home .log-card > div { color: #cbbd9d; }
+html[data-theme="fantasy"] .dnd-campaign-home .log-composer { background: var(--atlas-grain), #213037; border-top: 1px solid #8c774e; }
+html[data-theme="fantasy"] .dnd-campaign-home .audience-label { background: #4b463a; color: #f2deaf; border-radius: 3px; }
+html[data-theme="fantasy"] .dnd-campaign-home .audience-label.public { background: #40533c; }
+html[data-theme="fantasy"] .dnd-campaign-home :is(.sidebar-scene-editor, .scene-folder-group, .scene-view-status, .reference-detail, .campaign-settings-scroll > section) { background: var(--atlas-grain), #26363b; border-color: #80704e; color: #ead6ae; }
+html[data-theme="fantasy"] .dnd-campaign-home .sidebar-pane h3 { color: #e2c68e; border-color: #7d6b47; text-transform: none; }
+html[data-theme="fantasy"] .dnd-campaign-home .scene-sidebar-row { border-color: #706246; background: #1e2e33; }
+html[data-theme="fantasy"] .dnd-campaign-home .scene-sidebar-row.live { border-color: #788658; box-shadow: inset 3px 0 #678153; }
+html[data-theme="fantasy"] .dnd-campaign-home .reference-result-table thead th,
+html[data-theme="fantasy"] .dnd-campaign-home .reference-source-list thead th { background: #34403c; color: #e4cd99; }
+html[data-theme="fantasy"] .dnd-campaign-home :is(.reference-result-table, .reference-source-list) tbody tr:nth-child(even) { background: #1e2c31; }
+html[data-theme="fantasy"] .dnd-campaign-home .reference-result-table tbody th > button { background: transparent; color: #ebd3a3; border: 0; box-shadow: none; }
+html[data-theme="fantasy"] .dnd-campaign-home :is(.campaign-setting-toggle, .campaign-setting-checks label) { background: #30403c; border-color: #7a6a48; color: #eddbb2; }
+html[data-theme="fantasy"] .dnd-campaign-home .campaign-setting-toggle small { color: #c9bc9d; }
+html[data-theme="fantasy"] .dnd-campaign-home .creation-dialog { background: var(--atlas-grain), #233138; border-color: #a58a54; color: #e8d7b3; }
+html[data-theme="fantasy"] .dnd-campaign-home .creation-dialog :is(h2, h3, h4) { color: #efd5a0; border-color: #786747; }
+html[data-theme="fantasy"] .dnd-campaign-home :is(.creation-header, .creation-name, .creation-summary, .builder-review-card, .builder-options article) { background: var(--atlas-grain), #29393e; border-color: #7e6b46; }
+html[data-theme="fantasy"] .dnd-campaign-home .creation-dialog :is(label, .builder-review-card) { color: #e8d6b0; }
+
+/* The folio keeps a paper reading surface inside the same slate-and-gold frame. */
+html[data-theme="fantasy"] .dnd-campaign-home .character-sheet.grimoire-sheet { border-color: #c0a268; box-shadow: 0 18px 70px #000b, inset 0 0 0 2px #5f513a; }
+html[data-theme="fantasy"] .dnd-campaign-home .grimoire-sheet :is(.sheet-header, .character-sheet-tabs) { background: var(--atlas-grain), #24343b; border-color: #9e8453; }
+html[data-theme="fantasy"] .dnd-campaign-home .grimoire-sheet .sheet-header::after { border-color: #d4b87955; background: repeating-conic-gradient(from 15deg, transparent 0deg 29deg, #d5be7920 29deg 30deg); box-shadow: inset 0 0 0 20px #24343b, inset 0 0 0 21px #d5be7920; }
+html[data-theme="fantasy"] .dnd-campaign-home .grimoire-sheet .sheet-header h2 { color: #f6dfaf; font-family: Georgia, serif; }
+html[data-theme="fantasy"] .dnd-campaign-home .grimoire-sheet :is(.character-sheet-tabs > button, .sheet-header > button) { background: #26383a; border-color: #9c8351; color: #e9d3a5; font-family: Georgia, serif; }
+html[data-theme="fantasy"] .dnd-campaign-home .grimoire-sheet .character-sheet-tabs > button[aria-selected="true"] { background: #374b37; color: #f9e2ad; border-color: #c8aa67; box-shadow: inset 0 -2px #70915d; }
+html[data-theme="fantasy"] .dnd-campaign-home .grimoire-sheet .sheet-scroll { background: var(--atlas-grain), radial-gradient(ellipse at 80% 0, #e5d3ac, #ece2cc 60%, #d8c6a0); }
+html[data-theme="fantasy"] .dnd-campaign-home .grimoire-sheet :is(input, select, textarea) { color-scheme: light; background: #f2e8d1; border-color: #9e895f; color: #3b3020; caret-color: #3b3020; text-shadow: none; }
+html[data-theme="fantasy"] .dnd-campaign-home .grimoire-sheet .sheet-scroll button { background: #e2d0a9; border-color: #9c8456; color: #43371f; text-shadow: none; }
+html[data-theme="fantasy"] .dnd-campaign-home .grimoire-sheet .sheet-roll-control > button { background: #f3e8d1; }
+html[data-theme="fantasy"] .dnd-campaign-home .grimoire-sheet .sheet-tabs button.active { background: #3b513b; border-color: #738759; color: #f4dfad; }
+@media (max-width: 1099px) {
+  html[data-theme="fantasy"] .dnd-campaign-home .battlemap-layout { grid-template-columns: minmax(0, 1fr); }
+  html[data-theme="fantasy"] .dnd-campaign-home .battlemap-layout > .table-sidebar { grid-column: 1; }
+}
+@media (max-width: 760px) {
+  html[data-theme="fantasy"] .dnd-campaign-home .account-brand { font-size: 20px; }
+  html[data-theme="fantasy"] .dnd-campaign-home .atlas-brand-mark .fantasy-icon { width: 32px; height: 32px; flex-basis: 32px; }
+  html[data-theme="fantasy"] .dnd-campaign-home .map-column .battlemap-workspace { padding-inline: 6px; padding-bottom: 6px; }
+  html[data-theme="fantasy"] .dnd-campaign-home .battlemap-header { padding-block: 6px; }
+}

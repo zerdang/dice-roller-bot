@@ -96,6 +96,14 @@ grants access to another game.
 
 ### D&D battlemap
 
+Party groups characters under collapsible player headings, with each player's
+campaign-wide active character first and remaining sheets ordered by their last
+update. Players see shared encounter summaries for the party and can open only
+their own full sheets. The DM can open every sheet and see DM-private notes;
+inventory, notes, and other full-sheet details are not part of shared summaries.
+Sheet tabs switch between authorized characters, with confirmation before
+discarding edits. The sheet uses a quiet parchment-and-brass fantasy style.
+
 The D&D workspace provides persistent scenes, square-grid calibration, local
 pan/zoom, optional snapping, player-owned tokens, counters, tags, markers, and
 circle/cone/line/rectangle aids. Rulers use Euclidean straight-line distance and

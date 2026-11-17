@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Battlemap from "./Battlemap.jsx";
 import CharacterSheet from "./CharacterSheet.jsx";
 import DndSidebar from "./DndSidebar.jsx";
+import { groupPartyRoster } from "./party.js";
 
 const ABILITIES = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"];
 const SKILLS = ["Acrobatics", "Animal Handling", "Arcana", "Athletics", "Deception", "History", "Insight", "Intimidation", "Investigation", "Medicine", "Nature", "Perception", "Performance", "Persuasion", "Religion", "Sleight of Hand", "Stealth", "Survival"];
@@ -113,8 +114,10 @@ export default function DndWorkspace({ dashboard, request, refresh, reportError 
   const openSheet = (id) => { sheetLauncher.current = document.activeElement; setSheetId(id); window.history.replaceState(null, "", `#sheet=${id}`); };
   const closeSheet = () => { setSheetId(null); window.history.replaceState(null, "", window.location.pathname + window.location.search); window.setTimeout(() => sheetLauncher.current?.focus?.(), 0); };
   const activeSheet = cards.find((card) => card.id === sheetId);
+  const sheetChoices = groupPartyRoster(dashboard.dnd_roster || cards).flatMap(group => group.characters.filter(card => card.can_open).map(card => ({ id: card.id, name: card.name, player: group.name })));
+  const switchSheet = id => { setSheetId(id); window.history.replaceState(null, "", `#sheet=${id}`); };
   return <main className="dnd-workspace">
     <div className="tabletop-shell"><section className="map-column"><Battlemap dashboard={dashboard} request={request} refreshDashboard={refresh} reportError={reportError} renderDock={(selectionPanel, mapContext) => <DndSidebar dashboard={dashboard} cards={cards} roster={dashboard.dnd_roster || cards} rolls={dashboard.dnd_rolls || []} audience={audience} setAudience={setAudience} request={request} refresh={refresh} reportError={reportError} onOpenSheet={openSheet} selectionPanel={selectionPanel} mapContext={mapContext} />} /></section></div>
-    {activeSheet && <CharacterSheet initial={activeSheet} role={dashboard.role} audience={audience} request={request} refresh={refresh} reportError={reportError} onClose={closeSheet} />}
+    {activeSheet && <CharacterSheet key={activeSheet.id} initial={activeSheet} role={dashboard.role} audience={audience} request={request} refresh={refresh} reportError={reportError} onClose={closeSheet} sheets={sheetChoices} onSwitch={switchSheet} />}
   </main>;
 }

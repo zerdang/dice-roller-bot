@@ -21,7 +21,7 @@ async function mockCampaign(page, role, hasScene) {
     if (path === "/api/auth/me") value = { user: { username: "Tester" }, active_campaign_id: 1, campaigns: [{ id: 1, name: "Test campaign", game_system: "dnd", role }] };
     else if (path === "/api/dashboard") value = {
       role, campaign: { id: 1, name: "Test campaign", game_system: "dnd" }, characters: [card], dnd_characters: [card],
-      dnd_roster: Array.from({ length: 40 }, (_, i) => ({ ...card, id: i + 1, name: `Hero ${i + 1}` })), turn_order: [],
+      dnd_roster: Array.from({ length: 40 }, (_, i) => ({ ...card, id: i + 1, name: `Hero ${i + 1}`, controller_key: "tester", controller_name: "Tester", is_active: i === 0 })), turn_order: [],
       dnd_rolls: Array.from({ length: 40 }, (_, i) => ({ id: i, actor_name: "Tester", label: `Roll ${i}`, total: 10, expression: "1d20", dice: [10], selected: [10], audience: "public", created_at: "2026-11-16T12:00:00Z" })),
     };
     else if (path === "/api/battlemap/state") value = { scene: hasScene ? scene : null, tokens: [], annotations: [], presets: [] };
@@ -44,26 +44,30 @@ async function mockCampaign(page, role, hasScene) {
 // Scroll normally, then verify the entire target is inside every clipping
 // ancestor and can receive pointer input. Being in the DOM is not sufficient.
 async function reachable(locator) {
-  await locator.scrollIntoViewIfNeeded();
-  await expect(locator).toBeInViewport({ ratio: 0.99 });
-  const clippedBy = await locator.evaluate(element => {
-    const target = element.getBoundingClientRect();
-    const failures = [];
-    for (let parent = element.parentElement; parent; parent = parent.parentElement) {
-      if (!/(auto|scroll|hidden|clip)/.test(getComputedStyle(parent).overflowY)) continue;
-      const bounds = parent.getBoundingClientRect();
-      const top = bounds.top + parent.clientTop;
-      if (target.top < top - 2 || target.bottom > top + parent.clientHeight + 2) failures.push(parent.className || parent.tagName);
-    }
-    return failures;
-  });
-  expect(clippedBy).toEqual([]);
+  // Search results can finish rendering after a scroll. Retry the whole
+  // scroll-and-measure operation rather than measuring stale geometry.
+  await expect(async () => {
+    await locator.scrollIntoViewIfNeeded();
+    await expect(locator).toBeInViewport({ ratio: 0.99, timeout: 1000 });
+    const clippedBy = await locator.evaluate(element => {
+      const target = element.getBoundingClientRect();
+      const failures = [];
+      for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+        if (!/(auto|scroll|hidden|clip)/.test(getComputedStyle(parent).overflowY)) continue;
+        const bounds = parent.getBoundingClientRect();
+        const top = bounds.top + parent.clientTop;
+        if (target.top < top - 2 || target.bottom > top + parent.clientHeight + 2) failures.push(parent.className || parent.tagName);
+      }
+      return failures;
+    });
+    expect(clippedBy).toEqual([]);
+  }).toPass({ timeout: 5000 });
   if (await locator.evaluate(element => element.matches("button,input,select"))) await locator.click({ trial: true });
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 600 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
   for (const theme of ["crt", "simple", "fantasy"]) {
-    test(`${theme} ${viewport.width}x${viewport.height}: all bottom controls remain reachable`, async ({ page }) => {
+    test(`${theme} ${viewport.width}x${viewport.height}: all bottom controls remain reachable`, async ({ page }, testInfo) => {
       await page.setViewportSize(viewport);
       await page.addInitScript(theme => localStorage.setItem("tabletop-theme", theme), theme);
       await mockCampaign(page, "warden", true);
@@ -89,9 +93,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 600
         ["Game Log", ".dice-shortcuts button:last-child"],
       ]) {
         await dock.getByRole("button", { name: tab, exact: true }).click();
+        if (tab === "Party") await page.locator(".party-player-toggle").click();
         await reachable(page.locator(target));
+        if (theme === "fantasy" && viewport.width === 1440 && tab === "Game Log") await page.screenshot({ path: testInfo.outputPath("atlas-tabletop.png") });
       }
       await dock.getByRole("button", { name: "Party", exact: true }).click();
+      await page.locator(".party-player-toggle").click();
       await page.locator(".party-card").first().getByRole("button", { name: "Inspect", exact: true }).click();
       await reachable(page.getByRole("button", { name: "Place token", exact: true }));
       await page.getByRole("button", { name: "Open full sheet", exact: true }).click();

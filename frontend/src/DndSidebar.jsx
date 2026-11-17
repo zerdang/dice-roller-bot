@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ReferenceBrowser from "./ReferenceBrowser";
 import CharacterBuilder from "./CharacterBuilder";
 import CampaignSettings from "./CampaignSettings";
+import PartyBrowser from "./PartyBrowser.jsx";
 
 const operationId = () => crypto.randomUUID();
 const clampSidebarWidth = value => Math.max(340, Math.min(window.innerWidth - 260, value));
@@ -44,20 +45,6 @@ function GameLog({ cards, rolls, role, audience, setAudience, request, refresh, 
   </section>;
 }
 
-function PartyBrowser({ roster, role, activeName, onOpenSheet }) {
-  const [query, setQuery] = useState("");
-  return <section className="sidebar-pane party-pane">
-    <header><div><h2>Party</h2><p>{role === "warden" ? "Inspect, locate, and place characters" : "Shared encounter summary"}</p></div></header>
-    <input className="sidebar-search" type="search" placeholder="Search party" value={query} onChange={(event) => setQuery(event.target.value)} />
-    <div className="sidebar-scroll">{roster.filter((card) => card.name.toLowerCase().includes(query.toLowerCase())).map((card) => <article className={`party-card${card.name === activeName ? " active-turn" : ""}`} key={card.id}>
-      {card.name === activeName && <span className="turn-chip">Current turn</span>}
-      <button type="button" className="party-identity" disabled={!card.can_open} onClick={() => card.can_open && onOpenSheet(card.id)}><span className="actor-fallback">{card.name.slice(0, 1)}</span><span><b>{card.name}</b><small>{[card.identity?.class_name, card.identity?.level ? `Level ${card.identity.level}` : ""].filter(Boolean).join(" · ") || (card.can_open ? "Inspect character" : "Shared party summary")}</small></span></button>
-      <div className="party-stats"><span><b>{card.speed}</b>Speed</span><span><b>{card.armor_class}</b>Armor Class</span><span><b>{card.passives?.Perception ?? "—"}</b>Passive</span><span><b>{card.hp}/{card.max_hp}</b>Hit Points</span></div>
-      {card.conditions?.length > 0 && <p className="condition-summary"><b>Conditions:</b> {card.conditions.map((item) => item.name).join(", ")}</p>}
-      <div className="party-actions"><button type="button" onClick={() => window.dispatchEvent(new CustomEvent("dnd-center-character", { detail: card.id }))}>Locate</button>{role === "warden" && card.can_open && <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("dnd-place-character", { detail: { id: card.id, name: card.name } }))}>Place</button>}{card.can_open && <button type="button" onClick={() => onOpenSheet(card.id)}>{role === "warden" ? "Inspect" : "Open sheet"}</button>}</div>
-    </article>)}</div>
-  </section>;
-}
 
 function MyCharacter({ card, cards, request, refresh, reportError, onOpenSheet, onOpenLog }) {
   const [busy, setBusy] = useState(false);
@@ -261,6 +248,10 @@ export default function DndSidebar({ dashboard, cards, roster, rolls, audience, 
   const labels = { character: "My Character", party: "Party", log: "Game Log", scenes: "Scenes", reference: "Reference", selection: "Selection", settings: "Campaign Settings" };
   const activeName = dashboard.turn_order?.[0]?.name || "";
   const quickCard = roster.find((card) => card.id === quickCardId);
+  const activateCharacter = async id => {
+    await request("/api/dnd/characters/select", { method: "POST", body: JSON.stringify({ character_id: id }) });
+    await refresh(true);
+  };
   return <aside className={`table-sidebar${collapsed ? " collapsed" : ""}`} style={{ width: collapsed ? 64 : width }}>
     {!collapsed && <button type="button" className="dock-resize-handle" aria-label="Resize sidebar" title="Drag or use arrow keys to resize sidebar" onPointerDown={(event) => { dragRef.current = { x: event.clientX, width: event.currentTarget.parentElement.getBoundingClientRect().width }; document.body.classList.add("resizing-dnd-dock"); }} onKeyDown={event => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setWidth(current => clampSidebarWidth(current + (event.key === "ArrowLeft" ? 40 : -40))); } }} />}
     <nav aria-label="Table sidebar">
@@ -271,7 +262,7 @@ export default function DndSidebar({ dashboard, cards, roster, rolls, audience, 
     {!collapsed && <div className="sidebar-content">
       {tab === "reference" && <ReferenceBrowser request={request} isWarden={isWarden} cards={cards} onGrant={() => refresh(true)} />}
       {tab === "character" && <MyCharacter card={cards.find(card => card.id === dashboard.active_character_id) || cards[0]} cards={cards} request={request} refresh={refresh} reportError={reportError} onOpenSheet={onOpenSheet} onOpenLog={() => setTab("log")} />}
-      {tab === "party" && (quickCard ? <QuickInspect card={quickCard} activeName={activeName} onBack={() => setQuickCardId(null)} onOpenSheet={onOpenSheet} /> : <PartyBrowser roster={roster} role={dashboard.role} activeName={activeName} onOpenSheet={isWarden ? setQuickCardId : onOpenSheet} />)}
+      {tab === "party" && (quickCard ? <QuickInspect card={quickCard} activeName={activeName} onBack={() => setQuickCardId(null)} onOpenSheet={onOpenSheet} /> : <PartyBrowser roster={roster} role={dashboard.role} activeName={activeName} onOpenSheet={onOpenSheet} onInspect={setQuickCardId} onActivate={activateCharacter} />)}
       {tab === "log" && <GameLog cards={cards} rolls={rolls} role={dashboard.role} audience={audience} setAudience={setAudience} request={request} refresh={refresh} reportError={reportError} />}
       {tab === "scenes" && <SceneBrowser request={request} reportError={reportError} viewedSceneId={mapContext?.sceneId} />}
       {tab === "selection" && <section className="sidebar-pane selection-pane"><header><div><h2>Selection</h2><p>Contextual scene and token controls</p></div></header><div className="selection-scroll">{selectionPanel}</div></section>}
