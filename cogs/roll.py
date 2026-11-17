@@ -37,12 +37,15 @@ from functions.visualizers import (
     body_for_output,
     create_table
 )
+from functions.companion import CompanionStore
+from functions.config import companion_db
 
 
 # ROLL COG
 class Roll(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.companion = CompanionStore(companion_db)
 
     # ROLL COMMAND
     @commands.hybrid_command(name=cmds["roll"]["name"], brief=cmds["roll"]["brief"], aliases=cmds["roll"]["aliases"],
@@ -166,6 +169,15 @@ class Roll(commands.Cog):
         commands_counter.labels("roll")
         commands_counter.labels("roll").inc()
 
+        # Save the plain table before Discord-specific ANSI color codes are added.
+        if guild:
+            self.companion.record_roll(
+                discord_id,
+                user_id,
+                ctx.author.display_name,
+                rolls,
+                overall,
+            )
         overall = Colorizer(overall).colorize()
         if args_len > 6:
             await asyncio.sleep(5)

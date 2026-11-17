@@ -49,6 +49,7 @@ class RollerBot(commands.AutoShardedBot):
         await roller.load_extension("cogs.context")
         await roller.load_extension("cogs.jokes")
         await roller.load_extension("cogs.community")
+        await roller.load_extension("cogs.companion")
         await self.tree.sync()
 
 

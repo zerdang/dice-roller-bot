@@ -7,5 +7,7 @@ feedback/*
 bugs/*
 
 venv
+.venv/
 _*
 .idea
+frontend/node_modules/
