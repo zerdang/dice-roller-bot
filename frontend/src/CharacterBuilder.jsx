@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { abilityIssues, suggestedBoosts, stepBaseScore, stepBoost } from "./builderValidation.js";
 
 const ABILITIES = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"];
+const ABILITY_ABBREVIATIONS = { strength: "STR", dexterity: "DEX", constitution: "CON", intelligence: "INT", wisdom: "WIS", charisma: "CHA" };
 const STEPS = [["class", "Class"], ["origin", "Origin"], ["abilities", "Abilities"], ["training", "Skills"], ["features", "Features"], ["equipment", "Equipment"], ["spells", "Spells"], ["portrait", "Portrait"], ["review", "Review"]];
 const METHODS = { array: "Standard array", point_buy: "Point buy", rolled: "Recorded rolls", manual: "Manual entry" };
 const ARRAY = [15, 14, 13, 12, 10, 8];
@@ -35,8 +36,8 @@ function PaneDivider({ value, onChange, container }) {
     }}><span aria-hidden="true">⋮</span></div>;
 }
 
-function AbilityStepper({ label, value, decrease, increase, canDecrease, canIncrease, fieldProps }) {
-  return <div className="builder-ability-stepper" role="group" aria-label={label} tabIndex={-1} {...fieldProps}>
+function AbilityStepper({ label, value, decrease, increase, canDecrease, canIncrease, fieldProps, accent = false }) {
+  return <div className={`builder-ability-stepper${accent ? " is-increase" : ""}`} role="group" aria-label={label} tabIndex={-1} {...fieldProps}>
     <button type="button" aria-label={`Decrease ${label}`} disabled={!canDecrease} onClick={decrease}>−</button>
     <output aria-label={`${label} value`}>{value}</output>
     <button type="button" aria-label={`Increase ${label}`} disabled={!canIncrease} onClick={increase}>+</button>
@@ -143,8 +144,6 @@ function DraftEditor({ initial, request, onBack, isWarden, onFinalized }) {
   const [step, setStep] = useState("class");
   const [spellPanel, setSpellPanel] = useState("choose");
   const [rolling, setRolling] = useState(false);
-  const [settings, setSettings] = useState(null);
-  const [policyBusy, setPolicyBusy] = useState(false);
   const [finalizedId, setFinalizedId] = useState(initial.finalized_character_id || null);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [controllerId, setControllerId] = useState(initial.owner_controller_id || "");
@@ -256,17 +255,6 @@ function DraftEditor({ initial, request, onBack, isWarden, onFinalized }) {
   const changeMethod = method => setDraft(old => ({ ...old, method, scores: Object.fromEntries(ABILITIES.map((ability, i) => [ability, method === "point_buy" ? 8 : method === "rolled" && preview.roll_pool ? preview.roll_pool.totals[i] : ARRAY[i]])) }));
   const adjustBase = (ability, delta) => setDraft(old => stepBaseScore(old, preview, ability, delta) || old);
   const adjustBoost = (ability, delta) => setDraft(old => stepBoost(old, preview, ability, delta) || old);
-  const policySave = async () => {
-    setPolicyBusy(true);
-    try {
-      await saveSnapshot(JSON.stringify(current.current));
-      const value = await request("/api/dnd/creation/settings", { method: "PUT", body: JSON.stringify(settings) });
-      setSettings(null);
-      const response = await request(`/api/dnd/creation/drafts/${initial.id}/preview`, { method: "POST", body: JSON.stringify({ draft: current.current }) });
-      setPreview({ ...response, policy: value });
-    } catch (e) { setError(e.message); }
-    finally { setPolicyBusy(false); }
-  };
   const finalize = async () => {
     setApprovalBusy(true); setError("");
     try {
@@ -351,20 +339,17 @@ function DraftEditor({ initial, request, onBack, isWarden, onFinalized }) {
         <details><summary>Optional lineage / subrace</summary><p>Select the matching parent species first. Some species describe ancestry choices inside their traits instead.</p><button onClick={() => apply("lineage_id", "")}>Clear lineage</button><CatalogChoice request={request} draftId={initial.id} onInspect={inspect} sources={referenceMeta?.sources || []} kind="subrace" label="Lineage" selected={draft.lineage_id} onSelect={id => apply("lineage_id", id)} /></details>
         <CatalogChoice request={request} draftId={initial.id} onInspect={inspect} sources={referenceMeta?.sources || []} kind="background" label="Background" selected={draft.background_id} onSelect={id => setDraft(old => ({ ...old, background_id: id, boosts: Object.fromEntries(ABILITIES.map(a => [a, 0])), equipment: { ...old.equipment, background: "" } }))} />
       </>}
-      {step === "abilities" && <section className="builder-abilities-step"><header className="builder-step-heading"><div><h3>Assign ability scores</h3><p>Set your base scores, then apply the increases from your background.</p></div><label>Generation method<select value={draft.method} onChange={e => changeMethod(e.target.value)}>{Object.entries(METHODS).map(([key, label]) => <option key={key} value={key} disabled={!preview.policy.methods.includes(key)}>{label}{!preview.policy.methods.includes(key) ? " — disabled by DM" : ""}</option>)}</select></label></header>
-        {isWarden && <details><summary>Campaign ability methods</summary><p>Recorded rolls are reused across a person's campaign drafts. Manual entry is available only when enabled here.</p>{settings ? <><div className="creation-checks">{Object.entries(METHODS).map(([method, label]) => <label key={method}><input type="checkbox" checked={settings.methods.includes(method)} onChange={e => setSettings(old => ({ ...old, methods: e.target.checked ? [...old.methods, method] : old.methods.filter(m => m !== method) }))} />{label}</label>)}</div><button disabled={policyBusy || !settings.methods.length} onClick={policySave}>Save campaign settings</button><button disabled={policyBusy} onClick={() => setSettings(null)}>Cancel</button></> : <button onClick={() => setSettings({ ...preview.policy })}>Edit allowed methods</button>}</details>}
+      {step === "abilities" && <section className="builder-abilities-step"><header className="builder-step-heading"><div><h3>Assign ability scores</h3></div><label>Generation method<select value={draft.method} onChange={e => changeMethod(e.target.value)}>{Object.entries(METHODS).map(([key, label]) => <option key={key} value={key} disabled={!preview.policy.methods.includes(key)}>{label}{!preview.policy.methods.includes(key) ? " — disabled by DM" : ""}</option>)}</select></label></header>
         {draft.method === "point_buy" && <div className={`builder-point-budget${pointRemaining === null || pointRemaining < 0 ? " invalid" : ""}`} role="status"><strong>{pointRemaining === null ? "Check scores" : `${pointRemaining} / 27 points left`}</strong><span>Each base score must be 8–15. Costs rise as scores increase.</span></div>}
-        {draft.method === "array" && <p>Assign 15, 14, 13, 12, 10, and 8. Use + / − to move between these values; the other ability's assignment swaps automatically.</p>}
         {draft.method === "rolled" && <><p>Six rolls of 4d6, dropping the lowest die. Your recorded pool is reused across your campaign drafts.</p><button disabled={rolling} onClick={roll}>{preview.roll_pool ? "Assign recorded scores" : "Roll ability scores"}</button>{preview.roll_pool && <ol className="creation-rolls">{preview.roll_pool.dice.map((dice, i) => <li key={i}>{dice.map((die, j) => j === dice.indexOf(Math.min(...dice)) ? <del key={j}>{die}</del> : <span key={j}>{die}</span>)}<strong>= {preview.roll_pool.totals[i]}</strong></li>)}</ol>}</>}
-        <div className="builder-background-boost" role="note"><strong>Ability increases</strong><span>Spend all 3 points. Each click adds +1, with at most +2 per ability. Choose +2/+1 or +1/+1/+1.</span><span>{preview.policy.flexible_background_abilities ? "Unrestricted: all six abilities are available, regardless of species or background." : `Allowed by your background: ${preview.eligible_boosts.map(title).join(", ")}.`}</span></div>
-        <div className={`builder-boost-budget${boostSpent > 3 ? " invalid" : boostSpent === 3 ? " complete" : ""}`} role="status" aria-live="polite"><strong>{boostSpent} / 3 ability increases used</strong><span>{boostSpent > 3 ? `Remove ${boostSpent - 3} excess points.` : boostSpent === 3 ? "All 3 points allocated." : `${3 - boostSpent} points remaining. Use + to allocate them.`}</span></div>
+        <div className="builder-boost-budget" role="status" aria-live="polite">{boostSpent} / 3 ability increases used. {boostSpent > 3 ? `Remove ${boostSpent - 3} excess points.` : boostSpent === 3 ? "All 3 points allocated." : `${3 - boostSpent} points remaining.`}</div>
         {contextPending ? <p role="status">Updating background choices after save…</p> : issues.some(item => item.step === "abilities") && <div className="builder-validation" aria-live="polite"><strong>Ability choices to fix</strong><ul>{issues.filter(item => item.step === "abilities").map((item, index) => <li key={index}><button type="button" onClick={() => goToIssue(item)}>{item.message}</button></li>)}</ul>{suggestion && <button type="button" onClick={() => apply("boosts", suggestion)}>Use suggested increases: {ABILITIES.filter(a => suggestion[a]).map(a => `${title(a)} +${suggestion[a]}`).join(", ")}</button>}</div>}
-        <div className="creation-abilities"><div className="creation-abilities-head" aria-hidden="true"><span>Ability</span><span>Base score</span><span>Ability increase</span><span>Total / modifier</span></div>{ABILITIES.map(ability => {
+        <div className="creation-abilities">{ABILITIES.map(ability => {
           const total = draft.scores[ability] + draft.boosts[ability];
-          return <article key={ability}><h4>{title(ability)}</h4>
-            <div className="builder-ability-control"><span>Base score</span><AbilityStepper label={`${ability} base score`} value={draft.scores[ability]} fieldProps={fieldProps(`scores.${ability}`)} canDecrease={!!stepBaseScore(draft, preview, ability, -1)} canIncrease={!!stepBaseScore(draft, preview, ability, 1)} decrease={() => adjustBase(ability, -1)} increase={() => adjustBase(ability, 1)} />{fieldError(`scores.${ability}`)}</div>
-            <div className="builder-ability-control"><span>Ability increase</span><AbilityStepper label={`${ability} ability increase`} value={signed(draft.boosts[ability])} fieldProps={fieldProps(`boosts.${ability}`)} canDecrease={!!stepBoost(draft, preview, ability, -1)} canIncrease={!contextPending && !!stepBoost(draft, preview, ability, 1)} decrease={() => adjustBoost(ability, -1)} increase={() => adjustBoost(ability, 1)} />{fieldError(`boosts.${ability}`)}</div>
-            <p className="ability-total"><strong>{total}</strong><span>{signed(Math.floor((total - 10) / 2))} modifier</span></p></article>;
+          return <article key={ability} aria-label={title(ability)}><header><h4>{ABILITY_ABBREVIATIONS[ability]}</h4><p className="ability-total"><strong>{total}</strong><span>{signed(Math.floor((total - 10) / 2))}</span></p></header>
+            <div className="builder-ability-control"><span>Score</span><AbilityStepper label={`${ability} base score`} value={draft.scores[ability]} fieldProps={fieldProps(`scores.${ability}`)} canDecrease={!!stepBaseScore(draft, preview, ability, -1)} canIncrease={!!stepBaseScore(draft, preview, ability, 1)} decrease={() => adjustBase(ability, -1)} increase={() => adjustBase(ability, 1)} />{fieldError(`scores.${ability}`)}</div>
+            <div className="builder-ability-control"><span>Increase</span><AbilityStepper accent label={`${ability} ability increase`} value={signed(draft.boosts[ability])} fieldProps={fieldProps(`boosts.${ability}`)} canDecrease={!!stepBoost(draft, preview, ability, -1)} canIncrease={!contextPending && !!stepBoost(draft, preview, ability, 1)} decrease={() => adjustBoost(ability, -1)} increase={() => adjustBoost(ability, 1)} />{fieldError(`boosts.${ability}`)}</div>
+          </article>;
         })}</div>
       </section>}
       {step === "training" && <section><h3>Skill proficiencies</h3><p>Choose {preview.class_skill_count} class skills: {draft.class_skills.length} selected.</p><div className="creation-checks">{skillOptions.map(skill => <label key={skill}><input type="checkbox" checked={draft.class_skills.includes(skill)} onChange={e => apply("class_skills", e.target.checked ? [...draft.class_skills, skill] : draft.class_skills.filter(s => s !== skill))} />{title(skill)}{preview.skill_grants[skill]?.some(origin => origin !== "class") && <small>Also granted by {preview.skill_grants[skill].filter(origin => origin !== "class").join(", ")}</small>}</label>)}</div><h4>Granted proficiencies</h4>{Object.entries(preview.skill_grants).map(([skill, sources]) => <p key={skill}>{title(skill)} — {sources.join(", ")}</p>)}{!skillOptions.length && <p>Consult your class details for any choices that need manual review.</p>}</section>}

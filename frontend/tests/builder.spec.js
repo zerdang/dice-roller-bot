@@ -155,6 +155,19 @@ test("unrestricted placement spends a shared three-point budget and refunds imme
   await expect(page.locator(".builder-validation")).toHaveCount(0);
 });
 
+test("abilities fit in a compact six-card desktop layout", async ({ page }) => {
+  await page.setViewportSize({ width: 1500, height: 807 });
+  await openDraft(page, "fantasy", { boosts: { strength: 2, dexterity: 1 } });
+  await page.getByRole("button", { name: "Abilities", exact: true }).click();
+  const cards = page.locator(".creation-abilities article");
+  await expect(cards).toHaveCount(6);
+  await expect(cards.locator("h4")).toHaveText(["STR", "DEX", "CON", "INT", "WIS", "CHA"]);
+  await expect(page.getByText("Campaign ability methods", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Ability increases", { exact: true })).toHaveCount(0);
+  await expect(cards.first().locator(".builder-ability-stepper.is-increase output")).toHaveCSS("background-color", "rgb(39, 102, 95)");
+  await expect.poll(() => page.locator(".creation-main").evaluate(element => element.scrollHeight <= element.clientHeight)).toBe(true);
+});
+
 test("point-buy and manual steppers block unaffordable scores and totals above twenty", async ({ page }) => {
   await openDraft(page, "fantasy", { method: "point_buy", scores: { strength: 15, dexterity: 15, constitution: 14, intelligence: 10, wisdom: 8, charisma: 8 } });
   await page.getByRole("button", { name: "Abilities", exact: true }).click();
